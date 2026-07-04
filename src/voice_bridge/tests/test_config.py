@@ -1,0 +1,83 @@
+from pathlib import Path
+
+import pytest
+
+from voice_bridge.config import VoiceBridgeConfig
+
+
+def test_default_config_uses_internal_topics():
+    config = VoiceBridgeConfig.default()
+
+    assert config.topics["asr"] == "/g1/audio/asr"
+    assert config.topics["voice_loco"] == "/voice/cmd/loco"
+    assert config.topics["voice_action"] == "/voice/cmd/action"
+    assert config.agent["backend"] == "rule_based"
+    assert "宇树" in config.voice["wake_words"]
+
+
+def test_yaml_overrides_defaults(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+voice:
+  wake_words: ["小一"]
+motion_defaults:
+  default_vx: 0.2
+agent:
+  backend: disabled
+topics:
+  voice_state: /debug/voice_state
+""",
+        encoding="utf-8",
+    )
+
+    config = VoiceBridgeConfig.from_yaml(config_path)
+
+    assert config.voice["wake_words"] == ["小一"]
+    assert config.voice["stop_words"]
+    assert config.motion_defaults["default_vx"] == 0.2
+    assert config.agent["backend"] == "disabled"
+    assert config.topics["voice_state"] == "/debug/voice_state"
+
+
+def test_invalid_backend_is_rejected(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+agent:
+  backend: shell
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported agent backend"):
+        VoiceBridgeConfig.from_yaml(config_path)
+
+
+def test_http_backend_requires_endpoint(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+agent:
+  backend: http_json
+  http_endpoint: ""
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="requires http_endpoint"):
+        VoiceBridgeConfig.from_yaml(config_path)
+
+
+def test_empty_topic_is_rejected(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+topics:
+  asr: ""
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing topic config: asr"):
+        VoiceBridgeConfig.from_yaml(config_path)

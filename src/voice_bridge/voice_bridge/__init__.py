@@ -1,0 +1,1 @@
+"""Voice bridge node package."""

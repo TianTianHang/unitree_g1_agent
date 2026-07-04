@@ -1,0 +1,30 @@
+voice:
+  wake_words: ["宇树", "小宇"]
+  stop_words: ["停止", "停下", "别动", "取消", "stop"]
+  idle_timeout_sec: 20.0
+  max_session_sec: 300.0
+  min_confidence: 0.5
+  process_partial: false
+
+motion_defaults:
+  default_vx: 0.25
+  default_vy: 0.15
+  default_vyaw: 0.5
+  default_motion_duration_sec: 1.0
+  max_motion_duration_sec: 2.0
+
+agent:
+  backend: rule_based
+  http_endpoint: ""
+  timeout_sec: 2.0
+
+topics:
+  asr: /g1/audio/asr
+  voice_loco: /voice/cmd/loco
+  voice_action: /voice/cmd/action
+  tts: /g1/cmd/audio/tts
+  led: /g1/cmd/audio/led
+  voice_state: /voice/state
+  robot_mode: /g1/state/mode
+  safety_state: /g1/state/safety
+  health: /g1/state/health
