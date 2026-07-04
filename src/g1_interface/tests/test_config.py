@@ -54,3 +54,48 @@ control:
 
     with pytest.raises(ValueError, match="low level control requires manual confirmation"):
         G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_runtime_required_topics_are_rejected_when_empty(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+native_topics:
+  low_state_low_freq: ""
+  secondary_imu: ""
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing native topic config: low_state_low_freq, secondary_imu"):
+        G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_set_velocity_api_id_is_required(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+sport_api:
+  api_ids:
+    set_velocity:
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing sport API id config: set_velocity"):
+        G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_runtime_timeouts_are_required(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+timeouts:
+  state_timeout_ms:
+  api_response_timeout_ms:
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing timeout config: state_timeout_ms, api_response_timeout_ms"):
+        G1InterfaceConfig.from_yaml(config_path)

@@ -3,7 +3,7 @@
   <name>g1_interface</name>
   <version>0.1.0</version>
   <description>Unitree G1 ROS2 interface node for native state and sport API bridging.</description>
-  <maintainer email="dev@example.local">unitree_g1_agent</maintainer>
+  <maintainer email="2450804878@qq.com">unitree_g1_agent</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_python</buildtool_depend>

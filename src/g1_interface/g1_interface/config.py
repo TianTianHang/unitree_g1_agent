@@ -102,10 +102,29 @@ class G1InterfaceConfig:
         return config
 
     def validate(self) -> None:
-        required_topics = ["low_state", "sport_request", "sport_response"]
+        required_topics = [
+            "low_state",
+            "low_state_low_freq",
+            "secondary_imu",
+            "sport_request",
+            "sport_response",
+        ]
         missing_topics = [key for key in required_topics if not self.native_topics.get(key)]
         if missing_topics:
             raise ValueError(f"missing native topic config: {', '.join(missing_topics)}")
+
+        required_timeouts = [
+            "state_timeout_ms",
+            "api_response_timeout_ms",
+            "health_publish_period_ms",
+        ]
+        missing_timeouts = []
+        for key in required_timeouts:
+            value = self.timeouts.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                missing_timeouts.append(key)
+        if missing_timeouts:
+            raise ValueError(f"missing timeout config: {', '.join(missing_timeouts)}")
 
         if self.control["allow_low_level"] and not self.control["require_manual_confirm_for_mode_switch"]:
             raise ValueError("low level control requires manual confirmation")
@@ -113,3 +132,16 @@ class G1InterfaceConfig:
         encoding = self.sport_api.get("parameter_encoding")
         if encoding != "json":
             raise ValueError(f"unsupported sport API parameter encoding: {encoding}")
+
+        api_ids = self.sport_api.get("api_ids")
+        required_api_ids = ["set_velocity"]
+        missing_api_ids = []
+        if not isinstance(api_ids, dict):
+            missing_api_ids = required_api_ids
+        else:
+            for key in required_api_ids:
+                value = api_ids.get(key)
+                if isinstance(value, bool) or not isinstance(value, int):
+                    missing_api_ids.append(key)
+        if missing_api_ids:
+            raise ValueError(f"missing sport API id config: {', '.join(missing_api_ids)}")

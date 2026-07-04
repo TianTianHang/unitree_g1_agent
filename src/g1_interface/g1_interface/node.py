@@ -1,9 +1,32 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from g1_interface.internal_types import SportCommand
+
+SAFE_LOCO_LIMITS = {
+    "vx": (-0.5, 0.5),
+    "vy": (-0.3, 0.3),
+    "vyaw": (-0.8, 0.8),
+    "duration_sec": (0.01, 2.0),
+}
+
+
+def _bounded_float(payload: dict[str, Any], field: str) -> float:
+    try:
+        value = float(payload[field])
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be numeric") from exc
+
+    if not math.isfinite(value):
+        raise ValueError(f"{field} non-finite")
+
+    low, high = SAFE_LOCO_LIMITS[field]
+    if value < low or value > high:
+        raise ValueError(f"{field} out of range")
+    return value
 
 
 def parse_safe_loco_command(raw_json: str) -> SportCommand:
@@ -12,11 +35,15 @@ def parse_safe_loco_command(raw_json: str) -> SportCommand:
     missing = [field for field in required if field not in payload]
     if missing:
         raise ValueError(f"missing required loco field: {', '.join(missing)}")
+    vx = _bounded_float(payload, "vx")
+    vy = _bounded_float(payload, "vy")
+    vyaw = _bounded_float(payload, "vyaw")
+    duration_sec = _bounded_float(payload, "duration_sec")
     return SportCommand(
         action="set_velocity",
         params={
-            "velocity": [float(payload["vx"]), float(payload["vy"]), float(payload["vyaw"])],
-            "duration": float(payload["duration_sec"]),
+            "velocity": [vx, vy, vyaw],
+            "duration": duration_sec,
         },
     )
 
@@ -47,6 +74,21 @@ def build_health_status(
         "pending_api_count": pending_api_count,
         "last_api_result": last_api_result,
     }
+
+
+def check_sport_command_allowed(
+    now_sec: float,
+    last_lowstate_sec: float | None,
+    state_timeout_sec: float,
+) -> tuple[bool, str | None]:
+    if last_lowstate_sec is None:
+        return False, "lowstate unavailable"
+
+    age_ms = int(round((now_sec - last_lowstate_sec) * 1000))
+    if now_sec - last_lowstate_sec > state_timeout_sec:
+        return False, f"lowstate stale: age_ms={age_ms}"
+
+    return True, None
 
 
 def _load_ros_messages():
@@ -178,14 +220,31 @@ class G1InterfaceNode:
         self.last_api_result = self._sport_api.record_response(msg, now_sec=self._now_sec())
 
     def on_safe_loco(self, msg):
-        command = parse_safe_loco_command(msg.data)
-        request = self._sport_api.build_request(command, now_sec=self._now_sec())
-        self.sport_request_pub.publish(request)
+        self._publish_sport_command(msg.data, parse_safe_loco_command, "safe_loco")
 
     def on_safe_stop(self, msg):
-        command = parse_stop_command(msg.data)
-        request = self._sport_api.build_request(command, now_sec=self._now_sec())
+        self._publish_sport_command(msg.data, parse_stop_command, "safe_stop")
+
+    def _publish_sport_command(self, raw_json, parser, command_name: str) -> bool:
+        now_sec = self._now_sec()
+        allowed, reason = check_sport_command_allowed(
+            now_sec=now_sec,
+            last_lowstate_sec=self.last_lowstate_sec,
+            state_timeout_sec=self.state_timeout_sec,
+        )
+        if not allowed:
+            self.node.get_logger().warning(f"rejecting {command_name}: {reason}")
+            return False
+
+        try:
+            command = parser(raw_json)
+            request = self._sport_api.build_request(command, now_sec=now_sec)
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            self.node.get_logger().warning(f"rejecting {command_name}: {exc}")
+            return False
+
         self.sport_request_pub.publish(request)
+        return True
 
     def publish_health(self):
         now_sec = self._now_sec()

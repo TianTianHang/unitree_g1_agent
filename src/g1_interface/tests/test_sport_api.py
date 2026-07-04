@@ -8,9 +8,34 @@ from g1_interface.sport_api import SportApiClient
 
 class FakeRequest:
     def __init__(self):
-        self.sequence_id = 0
-        self.api_id = 0
-        self.parameter = b""
+        self.header = type(
+            "RequestHeader",
+            (),
+            {"identity": type("RequestIdentity", (), {"id": 0, "api_id": 0})()},
+        )()
+        self.parameter = ""
+        self.binary = []
+
+
+class FakeResponse:
+    def __init__(self, request, code=0):
+        self.header = type(
+            "ResponseHeader",
+            (),
+            {
+                "identity": type(
+                    "RequestIdentity",
+                    (),
+                    {
+                        "id": request.header.identity.id,
+                        "api_id": request.header.identity.api_id,
+                    },
+                )(),
+                "status": type("ResponseStatus", (), {"code": code})(),
+            },
+        )()
+        self.data = ""
+        self.binary = []
 
 
 def test_build_velocity_request_sets_sequence_api_id_and_json_payload():
@@ -25,9 +50,9 @@ def test_build_velocity_request_sets_sequence_api_id_and_json_payload():
         now_sec=10.0,
     )
 
-    assert request.sequence_id == 1
-    assert request.api_id == 7105
-    assert json.loads(request.parameter.decode("utf-8")) == {"duration": 1.5, "velocity": [0.2, 0.0, 0.1]}
+    assert request.header.identity.id == 1
+    assert request.header.identity.api_id == 7105
+    assert json.loads(request.parameter) == {"duration": 1.5, "velocity": [0.2, 0.0, 0.1]}
     assert client.pending_count == 1
 
 
@@ -44,7 +69,7 @@ def test_record_response_clears_pending_request():
         SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0], "duration": 0.1}),
         now_sec=10.0,
     )
-    response = type("Response", (), {"sequence_id": request.sequence_id, "api_id": request.api_id, "code": 0})()
+    response = FakeResponse(request)
 
     result = client.record_response(response, now_sec=10.1)
 
