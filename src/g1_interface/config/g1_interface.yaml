@@ -1,0 +1,45 @@
+robot:
+  model: g1
+  dof_profile: auto
+  network_interface: auto
+  domain_id: 0
+  rmw_implementation: rmw_cyclonedds_cpp
+
+native_topics:
+  low_state: lowstate
+  low_state_low_freq: lf/lowstate
+  secondary_imu: secondary_imu
+  low_cmd: /lowcmd
+  arm_sdk: /arm_sdk
+  sport_request: /api/sport/request
+  sport_response: /api/sport/response
+  voice_request: /api/voice/request
+  voice_response: /api/voice/response
+  motion_switcher_request: /api/motion_switcher/request
+  motion_switcher_response: /api/motion_switcher/response
+  dex3_left_cmd: /dex3/left/cmd
+  dex3_right_cmd: /dex3/right/cmd
+  dex3_left_state: /lf/dex3/left/state
+  dex3_right_state: /lf/dex3/right/state
+
+control:
+  default_mode: sport_api_loco
+  allow_low_level: false
+  allow_arm_sdk: false
+  allow_dex3: false
+  allow_arm_while_loco: false
+  require_manual_confirm_for_mode_switch: true
+
+timeouts:
+  state_timeout_ms: 300
+  api_response_timeout_ms: 500
+  health_publish_period_ms: 200
+
+sport_api:
+  parameter_encoding: json
+  api_ids:
+    get_fsm_id: 7001
+    get_fsm_mode: 7002
+    set_velocity: 7105
+    switch_to_user_ctrl: 7110
+    switch_to_internal_ctrl: 7111
