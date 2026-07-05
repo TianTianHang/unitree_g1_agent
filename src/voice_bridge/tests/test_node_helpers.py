@@ -16,23 +16,28 @@ def test_build_loco_payload():
         session_id="s1",
         command_id="c1",
         text="向前",
+        created_at=10.0,
     )
 
+    assert payload["schema_version"] == "voice_command.v1"
     assert payload["source"] == "voice_bridge"
     assert payload["session_id"] == "s1"
+    assert payload["created_at"] == 10.0
     assert payload["vx"] == 0.1
     assert payload["duration_sec"] == 1.0
 
 
 def test_build_loco_payload_rejects_missing_fields():
     with pytest.raises(ValueError, match="missing loco field"):
-        build_loco_payload(AgentCommand(kind="loco", params={"vx": 0.1}), "s1", "c1", "向前")
+        build_loco_payload(AgentCommand(kind="loco", params={"vx": 0.1}), "s1", "c1", "向前", created_at=10.0)
 
 
 def test_build_action_payload():
-    payload = build_action_payload("stop", "s1", "c1", "停止", priority="emergency")
+    payload = build_action_payload("stop", "s1", "c1", "停止", created_at=10.0, priority="emergency")
 
+    assert payload["schema_version"] == "voice_command.v1"
     assert payload["action"] == "stop"
+    assert payload["created_at"] == 10.0
     assert payload["priority"] == "emergency"
 
 

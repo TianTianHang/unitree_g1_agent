@@ -34,6 +34,7 @@ timeouts:
   state_timeout_ms: 300
   api_response_timeout_ms: 500
   health_publish_period_ms: 200
+  mode_query_period_ms: 500
 
 sport_api:
   parameter_encoding: json

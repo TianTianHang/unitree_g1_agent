@@ -13,6 +13,7 @@ def test_default_config_uses_unitree_ros2_topic_names():
     assert config.native_topics["sport_response"] == "/api/sport/response"
     assert config.control["allow_low_level"] is False
     assert config.control["default_mode"] == "sport_api_loco"
+    assert config.timeouts["mode_query_period_ms"] == 500
 
 
 def test_yaml_overrides_defaults(tmp_path: Path):
@@ -83,6 +84,21 @@ sport_api:
     )
 
     with pytest.raises(ValueError, match="missing sport API id config: set_velocity"):
+        G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_get_fsm_mode_api_id_is_required(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+sport_api:
+  api_ids:
+    get_fsm_mode:
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing sport API id config: get_fsm_mode"):
         G1InterfaceConfig.from_yaml(config_path)
 
 

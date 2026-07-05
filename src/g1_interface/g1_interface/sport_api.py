@@ -53,6 +53,7 @@ class SportApiClient:
                 "sequence_id": sequence_id,
                 "api_id": int(getattr(identity, "api_id", 0)),
                 "code": int(getattr(status, "code", -1)),
+                "payload": decode_response_payload(msg),
             }
 
         latency_ms = int(round((now_sec - pending.created_monotonic_sec) * 1000))
@@ -63,6 +64,7 @@ class SportApiClient:
             "action": pending.action,
             "code": int(getattr(status, "code", -1)),
             "latency_ms": latency_ms,
+            "payload": decode_response_payload(msg),
         }
 
     def expired_requests(self, now_sec: float) -> list[PendingApiRequest]:
@@ -74,3 +76,21 @@ class SportApiClient:
         for pending in expired:
             self._pending.pop(pending.sequence_id, None)
         return expired
+
+
+def decode_response_payload(msg: object) -> dict[str, object]:
+    for attr in ["parameter", "data", "binary"]:
+        if not hasattr(msg, attr):
+            continue
+        value = getattr(msg, attr)
+        if value in (None, "", [], b""):
+            continue
+        if isinstance(value, bytes):
+            value = value.decode("utf-8")
+        if isinstance(value, (list, tuple)) and all(isinstance(item, int) for item in value):
+            value = bytes(value).decode("utf-8")
+        payload = json.loads(str(value))
+        if not isinstance(payload, dict):
+            raise ValueError("response payload must be a JSON object")
+        return payload
+    return {}

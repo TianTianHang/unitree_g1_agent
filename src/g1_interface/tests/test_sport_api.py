@@ -18,7 +18,7 @@ class FakeRequest:
 
 
 class FakeResponse:
-    def __init__(self, request, code=0):
+    def __init__(self, request, code=0, payload=None):
         self.header = type(
             "ResponseHeader",
             (),
@@ -34,7 +34,7 @@ class FakeResponse:
                 "status": type("ResponseStatus", (), {"code": code})(),
             },
         )()
-        self.data = ""
+        self.data = json.dumps(payload or {})
         self.binary = []
 
 
@@ -80,8 +80,20 @@ def test_record_response_clears_pending_request():
         "action": "set_velocity",
         "code": 0,
         "latency_ms": 100,
+        "payload": {},
     }
     assert client.pending_count == 0
+
+
+def test_record_response_decodes_payload():
+    client = SportApiClient(request_cls=FakeRequest, api_ids={"get_fsm_mode": 7002}, response_timeout_sec=0.5)
+    request = client.build_request(SportCommand(action="get_fsm_mode", params={}), now_sec=10.0)
+    response = FakeResponse(request, payload={"action": "get_fsm_mode", "data": 2})
+
+    result = client.record_response(response, now_sec=10.1)
+
+    assert result["action"] == "get_fsm_mode"
+    assert result["payload"] == {"action": "get_fsm_mode", "data": 2}
 
 
 def test_expired_requests_are_returned_and_removed():

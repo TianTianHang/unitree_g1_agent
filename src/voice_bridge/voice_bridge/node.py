@@ -15,16 +15,28 @@ def _json(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
-def build_loco_payload(command: AgentCommand, session_id: str, command_id: str, text: str) -> dict[str, Any]:
+COMMAND_SCHEMA_VERSION = "voice_command.v1"
+
+
+def build_loco_payload(
+    command: AgentCommand,
+    session_id: str,
+    command_id: str,
+    text: str,
+    *,
+    created_at: float,
+) -> dict[str, Any]:
     params = command.params
     required = ["vx", "vy", "vyaw", "duration_sec"]
     missing = [field for field in required if field not in params]
     if missing:
         raise ValueError(f"missing loco field: {', '.join(missing)}")
     return {
+        "schema_version": COMMAND_SCHEMA_VERSION,
         "source": "voice_bridge",
         "session_id": session_id,
         "command_id": command_id,
+        "created_at": float(created_at),
         "text": text,
         "vx": float(params["vx"]),
         "vy": float(params["vy"]),
@@ -39,12 +51,15 @@ def build_action_payload(
     command_id: str,
     text: str,
     *,
+    created_at: float,
     priority: str = "normal",
 ) -> dict[str, Any]:
     return {
+        "schema_version": COMMAND_SCHEMA_VERSION,
         "source": "voice_bridge",
         "session_id": session_id,
         "command_id": command_id,
+        "created_at": float(created_at),
         "action": action,
         "priority": priority,
         "text": text,
@@ -203,6 +218,7 @@ class VoiceBridgeNode:
             session_id=session_id,
             command_id=self._new_command_id(now_sec, action),
             text=decision.text or "",
+            created_at=now_sec,
             priority="emergency" if action == "stop" else "normal",
         )
         self._publish_string(self.action_pub, payload)
@@ -248,12 +264,14 @@ class VoiceBridgeNode:
 
     def _publish_agent_result(self, result: AgentResult, request: AgentRequest, now_sec: float) -> None:
         for command in result.commands:
+            publish_sec = self._now_sec()
             if command.kind == "loco":
                 payload = build_loco_payload(
                     command,
                     session_id=request.session_id,
-                    command_id=self._new_command_id(now_sec, "loco"),
+                    command_id=self._new_command_id(publish_sec, "loco"),
                     text=request.text,
+                    created_at=publish_sec,
                 )
                 self._publish_string(self.loco_pub, payload)
             elif command.kind == "action":
@@ -261,8 +279,9 @@ class VoiceBridgeNode:
                 payload = build_action_payload(
                     action=action,
                     session_id=request.session_id,
-                    command_id=self._new_command_id(now_sec, action),
+                    command_id=self._new_command_id(publish_sec, action),
                     text=request.text,
+                    created_at=publish_sec,
                     priority="emergency" if action == "stop" else "normal",
                 )
                 self._publish_string(self.action_pub, payload)

@@ -45,6 +45,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "state_timeout_ms": 300,
         "api_response_timeout_ms": 500,
         "health_publish_period_ms": 200,
+        "mode_query_period_ms": 500,
     },
     "sport_api": {
         "parameter_encoding": "json",
@@ -117,6 +118,7 @@ class G1InterfaceConfig:
             "state_timeout_ms",
             "api_response_timeout_ms",
             "health_publish_period_ms",
+            "mode_query_period_ms",
         ]
         missing_timeouts = []
         for key in required_timeouts:
@@ -134,7 +136,7 @@ class G1InterfaceConfig:
             raise ValueError(f"unsupported sport API parameter encoding: {encoding}")
 
         api_ids = self.sport_api.get("api_ids")
-        required_api_ids = ["set_velocity"]
+        required_api_ids = ["set_velocity", "get_fsm_mode"]
         missing_api_ids = []
         if not isinstance(api_ids, dict):
             missing_api_ids = required_api_ids

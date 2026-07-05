@@ -13,6 +13,8 @@ SAFE_LOCO_LIMITS = {
     "duration_sec": (0.01, 2.0),
 }
 
+STATE_SCHEMA_VERSION = "g1_state.v1"
+
 
 def _bounded_float(payload: dict[str, Any], field: str) -> float:
     try:
@@ -29,8 +31,19 @@ def _bounded_float(payload: dict[str, Any], field: str) -> float:
     return value
 
 
+def _require_validated_payload(payload: dict[str, Any], command_name: str) -> None:
+    validation_result = payload.get("validation_result")
+    if not isinstance(validation_result, dict):
+        raise ValueError(f"{command_name} missing validation_result")
+    if validation_result.get("allowed") is not True:
+        raise ValueError(f"{command_name} not allowed by safety validation")
+
+
 def parse_safe_loco_command(raw_json: str) -> SportCommand:
     payload = json.loads(raw_json)
+    if not isinstance(payload, dict):
+        raise ValueError("safe_loco payload must be a JSON object")
+    _require_validated_payload(payload, "safe_loco")
     required = ["vx", "vy", "vyaw", "duration_sec"]
     missing = [field for field in required if field not in payload]
     if missing:
@@ -49,8 +62,13 @@ def parse_safe_loco_command(raw_json: str) -> SportCommand:
 
 
 def parse_stop_command(raw_json: str) -> SportCommand:
-    if raw_json.strip():
-        json.loads(raw_json)
+    payload = json.loads(raw_json)
+    if not isinstance(payload, dict):
+        raise ValueError("safe_stop payload must be a JSON object")
+    _require_validated_payload(payload, "safe_stop")
+    action = str(payload.get("action", "")).strip().lower()
+    if action not in {"stop", "cancel"}:
+        raise ValueError(f"safe_stop action must be stop or cancel: {action}")
     return SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0], "duration": 0.1})
 
 
@@ -73,6 +91,67 @@ def build_health_status(
         "lowstate_age_ms": lowstate_age_ms,
         "pending_api_count": pending_api_count,
         "last_api_result": last_api_result,
+    }
+
+
+def build_low_state_payload(
+    *,
+    stamp_sec: float,
+    source: str,
+    mode: str | None,
+    control_owner: str,
+    mode_source: str,
+    summary: Any,
+    velocity: dict[str, float],
+    sport_fsm_mode: int | None = None,
+    sport_fsm_id: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "source": source,
+        "stamp_sec": stamp_sec,
+        "mode": mode,
+        "control_owner": control_owner,
+        "mode_source": mode_source,
+        "sport_fsm_mode": sport_fsm_mode,
+        "sport_fsm_id": sport_fsm_id,
+        "rpy": summary.rpy,
+        "quaternion": summary.quaternion,
+        "gyroscope": summary.gyroscope,
+        "accelerometer": summary.accelerometer,
+        "motor_count": summary.motor_count,
+        "max_temperature_c": summary.max_temperature_c,
+        "battery_voltage": None,
+        "velocity": {
+            "vx": float(velocity.get("vx", 0.0)),
+            "vy": float(velocity.get("vy", 0.0)),
+            "vyaw": float(velocity.get("vyaw", 0.0)),
+        },
+        "velocity_source": "last_sport_command",
+    }
+
+
+def build_mode_payload(
+    *,
+    stamp_sec: float,
+    source: str,
+    mode: str | None,
+    control_owner: str,
+    mode_source: str,
+    motor_count: int,
+    sport_fsm_mode: int | None = None,
+    sport_fsm_id: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "source": source,
+        "stamp_sec": stamp_sec,
+        "mode": mode,
+        "control_owner": control_owner,
+        "mode_source": mode_source,
+        "sport_fsm_mode": sport_fsm_mode,
+        "sport_fsm_id": sport_fsm_id,
+        "motor_count": motor_count,
     }
 
 
@@ -119,6 +198,13 @@ class G1InterfaceNode:
         self.last_lowstate_sec = None
         self.last_api_result = None
         self.state_timeout_sec = config.timeouts["state_timeout_ms"] / 1000.0
+        self.mode: str | None = None
+        self.control_owner = "unknown"
+        self.mode_source = "unavailable"
+        self.sport_fsm_mode: int | None = None
+        self.sport_fsm_id: int | None = None
+        self.commanded_velocity = {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}
+        self.command_until_sec = 0.0
 
         from g1_interface.converters import imu_to_payload, lowstate_to_summary
         from g1_interface.sport_api import SportApiClient
@@ -171,15 +257,33 @@ class G1InterfaceNode:
 
         period = config.timeouts["health_publish_period_ms"] / 1000.0
         node.create_timer(period, self.publish_health)
+        mode_query_period = config.timeouts["mode_query_period_ms"] / 1000.0
+        node.create_timer(mode_query_period, self.query_sport_mode)
 
     def _now_sec(self):
         return self.node.get_clock().now().nanoseconds / 1_000_000_000.0
 
     def on_lowstate(self, msg):
-        self.last_lowstate_sec = self._now_sec()
+        now_sec = self._now_sec()
+        self.last_lowstate_sec = now_sec
+        self._expire_commanded_velocity(now_sec)
         summary = self._lowstate_to_summary(msg, source=self.config.native_topics["low_state"])
         text = self.msg["String"]()
-        text.data = summary.to_json()
+        text.data = json.dumps(
+            build_low_state_payload(
+                stamp_sec=now_sec,
+                source=summary.source,
+                mode=self.mode,
+                control_owner=self.control_owner,
+                mode_source=self.mode_source,
+                summary=summary,
+                velocity=self.commanded_velocity,
+                sport_fsm_mode=self.sport_fsm_mode,
+                sport_fsm_id=self.sport_fsm_id,
+            ),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
         self.low_pub.publish(text)
 
         motor_text = self.msg["String"]()
@@ -191,10 +295,21 @@ class G1InterfaceNode:
         self.motor_pub.publish(motor_text)
 
     def on_lowstate_low_freq(self, msg):
+        now_sec = self._now_sec()
+        self._expire_commanded_velocity(now_sec)
         summary = self._lowstate_to_summary(msg, source=self.config.native_topics["low_state_low_freq"])
         mode_text = self.msg["String"]()
         mode_text.data = json.dumps(
-            {"source": summary.source, "rpy": summary.rpy, "motor_count": summary.motor_count},
+            build_mode_payload(
+                stamp_sec=now_sec,
+                source=summary.source,
+                mode=self.mode,
+                control_owner=self.control_owner,
+                mode_source=self.mode_source,
+                motor_count=summary.motor_count,
+                sport_fsm_mode=self.sport_fsm_mode,
+                sport_fsm_id=self.sport_fsm_id,
+            ),
             ensure_ascii=False,
             sort_keys=True,
         )
@@ -217,7 +332,12 @@ class G1InterfaceNode:
         self.imu_pub.publish(imu)
 
     def on_sport_response(self, msg):
-        self.last_api_result = self._sport_api.record_response(msg, now_sec=self._now_sec())
+        try:
+            self.last_api_result = self._sport_api.record_response(msg, now_sec=self._now_sec())
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            self.node.get_logger().warning(f"ignoring invalid sport API response: {exc}")
+            return
+        self._update_sport_state_from_response(self.last_api_result)
 
     def on_safe_loco(self, msg):
         self._publish_sport_command(msg.data, parse_safe_loco_command, "safe_loco")
@@ -244,7 +364,69 @@ class G1InterfaceNode:
             return False
 
         self.sport_request_pub.publish(request)
+        self._record_commanded_velocity(command, now_sec)
         return True
+
+    def query_sport_mode(self) -> None:
+        now_sec = self._now_sec()
+        if self._sport_api.pending_count >= 8:
+            return
+        for action in ["get_fsm_mode", "get_fsm_id"]:
+            if action not in self.config.sport_api["api_ids"]:
+                continue
+            try:
+                request = self._sport_api.build_request(SportCommand(action=action, params={}), now_sec=now_sec)
+            except ValueError as exc:
+                self.node.get_logger().warning(f"cannot build sport state query {action}: {exc}")
+                continue
+            self.sport_request_pub.publish(request)
+
+    def _record_commanded_velocity(self, command: SportCommand, now_sec: float) -> None:
+        velocity = command.params.get("velocity", [0.0, 0.0, 0.0])
+        duration = float(command.params.get("duration", 0.1))
+        self.commanded_velocity = {
+            "vx": float(velocity[0]),
+            "vy": float(velocity[1]),
+            "vyaw": float(velocity[2]),
+        }
+        self.command_until_sec = now_sec + max(0.0, duration)
+
+    def _expire_commanded_velocity(self, now_sec: float) -> None:
+        if now_sec >= self.command_until_sec:
+            self.commanded_velocity = {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}
+
+    def _update_sport_state_from_response(self, result: dict[str, Any]) -> None:
+        if result.get("matched") is not True or int(result.get("code", -1)) != 0:
+            return
+
+        action = result.get("action")
+        payload = result.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+
+        if action == "get_fsm_mode":
+            data = payload.get("data")
+            if data is None:
+                return
+            self.sport_fsm_mode = int(data)
+            self.mode = "sport_api_loco"
+            self.control_owner = "internal"
+            self.mode_source = "sport_api.get_fsm_mode"
+        elif action == "get_fsm_id":
+            data = payload.get("data")
+            if data is not None:
+                self.sport_fsm_id = int(data)
+        elif action == "switch_to_user_ctrl":
+            self.mode = "user_ctrl"
+            self.control_owner = "user"
+            self.mode_source = "sport_api.switch_to_user_ctrl"
+        elif action == "switch_to_internal_ctrl":
+            self.mode = "sport_api_loco"
+            self.control_owner = "internal"
+            self.mode_source = "sport_api.switch_to_internal_ctrl"
+            data = payload.get("data")
+            if data is not None:
+                self.sport_fsm_mode = int(data)
 
     def publish_health(self):
         now_sec = self._now_sec()

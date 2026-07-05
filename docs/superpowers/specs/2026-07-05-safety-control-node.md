@@ -403,7 +403,8 @@ class RobotStateSnapshot:
 safety:
   # 全局开关
   enabled: true
-  strict_mode: false  # true时，任何不确定都拒绝
+  strict_mode: true  # true时，任何不确定都拒绝
+  require_command_timestamp: true
   
   # 超时配置
   command_timeout_ms: 100
@@ -464,7 +465,9 @@ safety:
   health_thresholds:
     max_lowstate_age_ms: 300
     max_motor_temperature: 60.0
+    require_motor_temperature: false
     min_battery_voltage: 42.0  # V
+    require_battery_voltage: false
     
   # 审计和日志
   audit:

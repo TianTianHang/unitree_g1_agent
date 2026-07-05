@@ -1,0 +1,79 @@
+safety:
+  enabled: true
+  strict_mode: true
+  default_mode: sport_api_loco
+  require_command_timestamp: true
+  command_timeout_ms: 100
+  state_timeout_ms: 300
+
+  rate_limits:
+    loco:
+      max_per_second: 5
+      burst: 3
+    stop:
+      max_per_second: 10
+      burst: 10
+    action:
+      max_per_second: 3
+      burst: 2
+
+  motion_limits:
+    vx:
+      min: -0.5
+      max: 0.5
+      rate_limit: 0.3
+    vy:
+      min: -0.3
+      max: 0.3
+      rate_limit: 0.2
+    vyaw:
+      min: -0.8
+      max: 0.8
+      rate_limit: 0.4
+    duration_sec:
+      min: 0.01
+      max: 2.0
+
+  velocity_continuity:
+    enabled: true
+    max_acceleration: 2.0
+    max_jerk: 5.0
+
+  mode_restrictions:
+    sport_api_loco:
+      allow_loco: true
+      allow_action_stop: true
+      allow_action_cancel: true
+    user_ctrl:
+      allow_loco: false
+      allow_action_stop: true
+      allow_action_cancel: true
+    armed_mode:
+      allow_loco: false
+      allow_action_stop: true
+      allow_action_cancel: true
+
+  health_thresholds:
+    max_lowstate_age_ms: 300
+    max_motor_temperature: 60.0
+    require_motor_temperature: false
+    min_battery_voltage: 42.0
+    require_battery_voltage: false
+
+  audit:
+    log_all_decisions: true
+    log_rejected_only: false
+    retain_days: 30
+
+topics:
+  input:
+    loco_intent: /voice/cmd/loco
+    action_intent: /voice/cmd/action
+    robot_mode: /g1/state/mode
+    health: /g1/state/health
+    lowstate: /g1/state/low
+  output:
+    safe_loco: /g1/safe_cmd/loco
+    safe_stop: /g1/safe_cmd/stop
+    decisions: /g1/safety/decisions
+    safety_state: /g1/state/safety
