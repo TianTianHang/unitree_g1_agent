@@ -1,321 +1,163 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working in this repository.
 
 ## Project Overview
 
-This is a **Unitree G1 Agent** project - a ROS2-based control system for the Unitree G1 humanoid robot. The project is currently in early development stage (design phase) with source directories yet to be populated.
+This is a ROS2-based control stack for the Unitree G1 humanoid robot. The project is moving from direct CLI/SDK-style control toward a maintainable ROS2 architecture that preserves Pi Agent voice interaction while enforcing a safety boundary around all motion.
 
-**Key Goal**: Transform a Rust CLI-based G1 control system into a maintainable ROS2 architecture while preserving Pi Agent voice interaction capabilities.
+Current packages:
 
-**Robot Model**: Unitree G1 humanoid robot (23/29/35 DoF versions)
+- `src/g1_interface`: bridge from Unitree native ROS2 topics/APIs to project-internal state topics.
+- `src/voice_bridge`: voice/Pi Agent bridge package.
+- `src/g1_sim`: simulator for the official Unitree G1 native topic surface.
+- `safety_controller`: planned safety layer; design work lives under `docs/`.
 
-## Architecture Philosophy
+Official Unitree SDK/ROS2 source snapshots may be present under `.unitree/` for local evidence gathering. That directory is ignored and should not be committed.
 
-### Layered Safety-First Architecture
+## Architecture
 
-```
-Application Layer (Voice/Vision Nodes)
-    ↓
-Safety Control Layer (Safety limits, mode gating, timeout protection)
-    ↓  
-G1 Interface Layer (ROS2/DDS bridge to robot hardware)
-    ↓
-Unitree G1 Robot Hardware
-```
+All motion commands must pass through the safety layer before reaching robot-native command topics.
 
-**Critical Safety Principle**: All motion commands MUST pass through the safety control node. Application nodes never directly publish to Unitree native topics like `/lowcmd`, `/arm_sdk`, or `/api/*`.
-
-### Interface Boundaries
-
-- **Unitree Native Layer**: `lowstate`, `/lowcmd`, `/api/*`, `/dex3/*` (hardware-specific)
-- **G1 Interface Node Output**: `/g1/state/*`, `/g1/audio/*` (project-internal stable interface)
-- **Safety Node Output**: `/g1/safe_cmd/*`, `/g1/state/safety` (safety-validated commands)
-- **Application Layer**: `/voice/cmd/*`, `/g1/cmd/audio/*` (intent from voice/vision)
-
-## Development Environment
-
-### Nix Flake Development Shell
-
-This project uses Nix for reproducible development environments.
-
-```bash
-# Enter development environment
-nix develop
-
-# Or if using older Nix version
-nix-shell
-
-# Build packages
-nix build .#unitree-sdk2    # Build SDK2
-nix build .#unitree-ros2     # Build ROS2 packages
-nix build .#default          # Build default (unitree-sdk2)
+```text
+Application Layer (voice, vision, tools)
+  -> Safety Control Layer (limits, mode gating, timeouts)
+  -> G1 Interface Layer (ROS2/DDS bridge)
+  -> Unitree G1 Hardware or g1_sim
 ```
 
-### Environment Prerequisites
+Interface boundaries:
 
-**IMPORTANT**: The Nix environment depends on system-level ROS2 Humble installation:
+- Unitree native topics: `lowstate`, `lf/lowstate`, `secondary_imu`, `/lowcmd`, `/arm_sdk`, `/dex3/*`, `/api/*`.
+- Project state topics: `/g1/state/*`, `/g1/audio/*`.
+- Safety command topics: `/g1/safe_cmd/*`, `/g1/state/safety`.
+- Application intent topics: `/voice/cmd/*`, `/g1/cmd/audio/*`.
 
-- ROS2 Humble must be installed at `/opt/ros/humble`
-- The development shell automatically sources ROS2 environment
-- CycloneDDS configuration (`CYCLONEDDS_URI`) must be set for robot communication
+## Safety Rules
 
-### Network Configuration
+1. Application nodes must not publish directly to `/lowcmd`, `/arm_sdk`, or `/dex3/*/cmd`.
+2. Motion commands must be routed through the safety layer.
+3. Safety code must enforce velocity limits, command duration limits, state freshness checks, and mode gating.
+4. Mode switches that affect safety must require explicit handling and should not be hidden inside application logic.
+5. Avoid mixing high-level locomotion (`/api/sport`) and low-level control (`/lowcmd`) without an explicit ownership switch.
 
-**CycloneDDS Network Setup**:
-- Real robot: Set `CYCLONEDDS_URI` to point to robot network interface (e.g., `enp3s0`)
-- Local testing: Use `lo` (loopback) interface
-- Typical robot network: `192.168.123.0/24`
-
-## Project Structure
-
-```
-├── flake.nix                  # Nix flake configuration
-├── nix/
-│   └── pkgs/
-│       ├── unitree-sdk2.nix   # SDK2 package definition
-│       └── unitree-ros2.nix   # ROS2 packages definition
-├── third/
-│   └── unitree_sdk2/          # Unitree SDK2 source (vendored)
-├── docs/
-│   ├── 设计文档.md            # Architecture design doc (Chinese)
-│   ├── unitree_ros2_topics.md # Complete ROS2 topics reference
-│   ├── G1_H1_API_Documentation.md # API IDs and interfaces
-│   └── unitree_sdk2.md        # SDK2 documentation
-└── src/                       # Source code (to be implemented)
-    ├── g1_interface/          # G1 interface ROS2 node
-    ├── safety_controller/     # Safety control node
-    ├── voice_bridge/          # Voice/Pi Agent bridge node
-    └── vision/                # RealSense vision node (future)
-```
-
-## Build and Test Commands
-
-### Building Project Packages
-
-```bash
-# Using Nix (recommended)
-nix build .#unitree-sdk2
-nix build .#unitree-ros2
-
-# Manual build of SDK2 (if needed)
-cd third/unitree_sdk2
-mkdir build && cd build
-cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
-ninja
-```
-
-### ROS2 Environment Setup
-
-```bash
-# After entering nix develop, ROS2 is already sourced
-# Verify ROS2 installation
-ros2 --version
-
-# Check available topics (if robot connected)
-ros2 topic list
-
-# Verify unitree packages
-ros2 pkg list | grep unitree
-```
-
-### Testing Communication with Robot
-
-```bash
-# Test low-level state (500Hz)
-ros2 topic echo /lowstate
-
-# Test low-frequency state (~50Hz)  
-ros2 topic echo /lf/lowstate
-
-# Test IMU data
-ros2 topic echo /secondary_imu
-
-# Test high-level API response
-ros2 topic echo /api/sport/response
-```
-
-## ROS2 Topics Reference
-
-### Unitree Native Topics (Input to Interface Node)
-
-**State Topics**:
-- `lowstate` - High-frequency (500Hz) robot state
-- `lf/lowstate` - Low-frequency (~50Hz) robot state  
-- `secondary_imu` - Torso IMU data (500Hz)
-
-**Control Topics** (must go through safety layer):
-- `/lowcmd` - Low-level motor commands (500Hz) - **SAFETY CRITICAL**
-- `/arm_sdk` - Arm SDK control (50Hz) - **SAFETY CRITICAL**
-- `/dex3/left/cmd`, `/dex3/right/cmd` - Hand control - **SAFETY CRITICAL**
-
-**API Request/Response**:
-- `/api/sport/request` - Locomotion API requests
-- `/api/sport/response` - Locomotion API responses
-- `/api/arm/request` - Arm action API requests
-- `/api/voice/request` - Audio/voice API requests
-- `/api/motion_switcher/request` - Mode switching requests
-
-### Project-Internal Topics (Output from Interface Node)
-
-**State Topics**:
-- `/g1/state/health` - Node health, DDS connectivity
-- `/g1/state/low` - Standardized low-level state summary
-- `/g1/state/imu` - IMU orientation, angular velocity
-- `/g1/state/motors` - Motor positions, velocities, torques, temperatures
-- `/g1/state/bms` - Battery voltage, current, capacity
-- `/g1/state/mode` - FSM state, motion mode, control ownership
-
-**Command Topics** (input to safety layer):
-- `/g1/safe_cmd/loco` - Safety-validated locomotion commands
-- `/g1/safe_cmd/arm` - Safety-validated arm commands
-- `/g1/safe_cmd/hand` - Safety-validated hand commands
-
-**Audio Topics**:
-- `/g1/audio/asr` - ASR text events
-- `/g1/audio/status` - Audio service status
-
-## Safety-Critical Development Rules
-
-### ⚠️ CRITICAL SAFETY RULES
-
-1. **NEVER** directly publish to `/lowcmd`, `/arm_sdk`, or `/dex3/*/cmd` from application nodes
-2. **ALWAYS** route motion commands through safety control node
-3. **ALWAYS** implement velocity limits, duration limits, and mode gating in safety node
-4. **ALWAYS** require manual confirmation for mode switches that affect safety
-5. **NEVER** allow high-level locomotion (`/api/sport`) and low-level control (`/lowcmd`) simultaneously
-
-### Default Safety Limits
+Default safety limits used in design docs:
 
 ```yaml
 safety:
-  max_vx: 0.5        # Max forward velocity (m/s)
-  max_vy: 0.3        # Max lateral velocity (m/s) 
-  max_vyaw: 0.8      # Max yaw rate (rad/s)
-  max_duration_sec: 5.0  # Max single command duration
-  command_timeout_ms: 500  # Command timeout
-  state_timeout_ms: 300   # State timeout
+  max_vx: 0.5
+  max_vy: 0.3
+  max_vyaw: 0.8
+  max_duration_sec: 5.0
+  command_timeout_ms: 500
+  state_timeout_ms: 300
 ```
 
-## Common Development Patterns
+## ROS2 And Unitree Naming
 
-### ROS2 Node Creation
+Use ROS2 topic names in ROS2 nodes. Do not create ROS2 topics named `rt/...`.
+
+SDK2 examples use DDS channel names such as `rt/lowstate` and `rt/api/sport/request`. ROS2 normal topics are mapped by the RMW layer to DDS names with the `rt/` prefix:
+
+- SDK2 `rt/lowstate` maps to ROS2 `lowstate`.
+- SDK2 `rt/lowcmd` maps to ROS2 `/lowcmd` or `lowcmd`.
+- SDK2 `rt/arm_sdk` maps to ROS2 `/arm_sdk`.
+- SDK2 `rt/audio_msg` maps to ROS2 `/audio_msg`.
+- SDK2 `rt/api/sport/request` maps to ROS2 `/api/sport/request`.
+
+`g1_sim` should simulate the ROS2-visible official hardware surface, not project-internal topics or application closed loops.
+
+## Native Topic Reference
+
+State topics:
+
+- `lowstate`: high-rate `unitree_hg/msg/LowState`.
+- `lf/lowstate`: low-rate `unitree_hg/msg/LowState`.
+- `secondary_imu`: torso `unitree_hg/msg/IMUState`.
+- `/lf/dex3/left/state`, `/lf/dex3/right/state`: Dex3 hand state.
+
+Control topics:
+
+- `/lowcmd`, `lowcmd`: low-level `unitree_hg/msg/LowCmd`.
+- `/arm_sdk`: arm SDK `unitree_hg/msg/LowCmd`.
+- `/user_lowcmd`: SDK2 user low command alias.
+- `/dex3/left/cmd`, `/dex3/right/cmd`: `unitree_hg/msg/HandCmd`.
+
+Request/response APIs:
+
+- `/api/sport/request`, `/api/sport/response`.
+- `/api/arm/request`, `/api/arm/response`.
+- `/api/voice/request`, `/api/voice/response`.
+- `/api/motion_switcher/request`, `/api/motion_switcher/response`.
+- `/api/agv/request`, `/api/agv/response` where supported by target firmware.
+
+Key G1 API IDs:
+
+- Sport: `7001` get FSM ID, `7002` get FSM mode, `7105` set velocity, `7110` switch to user control, `7111` switch to internal control.
+- Voice: `1001` TTS, `1002` ASR, `1005` get volume, `1006` set volume, `1010` set RGB LED.
+
+## Development Environment
+
+The repository uses Nix for reproducible setup, but ROS2 Humble is still expected at the system level.
 
 ```bash
-# Create new ROS2 package
-ros2 pkg create --build-type ament_python <package_name>
-ros2 pkg create --build-type ament_cmake <package_name>
+nix develop
+nix build .#unitree-sdk2
+nix build .#unitree-ros2
+nix build .#default
+```
 
-# Build ROS2 workspace
-cd <workspace>
+ROS2/CycloneDDS prerequisites:
+
+- Source `/opt/ros/humble/setup.bash` when not inside the Nix development shell.
+- Use `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`.
+- Set `CYCLONEDDS_URI` to the robot network interface for hardware, or `lo` for local simulation.
+- Typical Unitree robot network: `192.168.123.0/24`.
+
+Useful checks:
+
+```bash
+ros2 pkg list | grep unitree
+ros2 topic echo /lowstate --once
+ros2 topic echo /lf/lowstate --once
+ros2 topic echo /secondary_imu --once
+ros2 topic echo /api/sport/response --once
+```
+
+## Test Commands
+
+Run focused Python tests from the repository root:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/g1_interface .venv/bin/python -m pytest src/g1_interface/tests -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/voice_bridge .venv/bin/python -m pytest src/voice_bridge/tests -q
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/g1_sim .venv/bin/python -m pytest src/g1_sim/tests -q
+```
+
+Build ROS2 packages when a ROS2 environment is available:
+
+```bash
+source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-### Running and Debugging
+## Important Files
 
-```bash
-# Run a node
-ros2 run <package_name> <node_name>
-
-# Launch file
-ros2 launch <package_name> <launch_file>
-
-# Monitor topics
-ros2 topic list
-ros2 topic echo <topic_name>
-ros2 topic hz <topic_name>
-
-# Debug DDS issues
-RMW_IMPLEMENTATION=rmw_cyclonedds_cpp ros2 topic list
-```
-
-## Common Issues and Solutions
-
-### CycloneDDS Connection Issues
-
-**Problem**: Cannot see topics from robot
-
-**Solutions**:
-1. Check `CYCLONEDDS_URI` points to correct network interface
-2. Verify network connectivity: `ping <robot_ip>`
-3. Check firewall rules
-4. Verify `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
-
-### ROS2 Environment Issues
-
-**Problem**: Cannot find unitree packages
-
-**Solutions**:
-1. Ensure `/opt/ros/humble/setup.bash` is sourced
-2. Ensure unitree_ros2 install directory is in `AMENT_PREFIX_PATH`
-3. Verify build completed successfully: `colcon build`
-
-### Build Issues
-
-**Problem**: Nix build fails
-
-**Solutions**:
-1. Update flake.lock: `nix flake update`
-2. Check system dependencies (ROS2 must be pre-installed)
-3. Verify network connectivity for GitHub dependencies
-
-## Phase 0: Interface Inventory
-
-Before development, perform robot interface inventory:
-
-```bash
-# 1. Check network interface
-ip addr show
-
-# 2. Set up environment
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI=<path_to_cyclonedds_config>
-
-# 3. List all topics
-ros2 topic list > docs/g1_topics_list.txt
-
-# 4. Verify low-level state
-ros2 topic echo /lowstate --once
-
-# 5. Verify high-level API
-ros2 topic echo /api/sport/response --once
-```
-
-## Key API IDs for G1
-
-### Locomotion API (Service: "sport")
-
-- `7001` - Get FSM ID
-- `7002` - Get FSM mode  
-- `7105` - Set velocity `[vx, vy, vyaw, duration]`
-- `7110` - Switch to user control
-- `7111` - Switch to internal control
-
-### Voice/Audio API (Service: "voice")
-
-- `1001` - Text-to-speech (TTS)
-- `1002` - Automatic speech recognition (ASR)
-- `1005` - Get volume
-- `1006` - Set volume
-- `1010` - Set RGB LED
-
-## Important File Locations
-
-- **Design Doc**: [docs/设计文档.md](docs/设计文档.md) - Comprehensive architecture (Chinese)
-- **Topics Reference**: [docs/unitree_ros2_topics.md](docs/unitree_ros2_topics.md) - Complete topics list
-- **API Documentation**: [docs/G1_H1_API_Documentation.md](docs/G1_H1_API_Documentation.md) - API IDs
-- **SDK2 Reference**: [docs/unitree_sdk2.md](docs/unitree_sdk2.md) - SDK2 interfaces
-- **Nix Packages**: [nix/pkgs/](nix/pkgs/) - Package definitions
-- **Unitree SDK2**: [third/unitree_sdk2/](third/unitree_sdk2/) - Official SDK
+- `docs/设计文档.md`: overall architecture.
+- `docs/unitree_ros2_topics.md`: ROS2 topic reference.
+- `docs/G1_H1_API_Documentation.md`: API IDs and interfaces.
+- `docs/unitree_sdk2.md`: SDK2 reference.
+- `docs/g1_native_topic_sim.md`: evidence and design notes for `g1_sim`.
+- `src/g1_interface/README.md`: G1 interface package usage.
+- `src/g1_sim/README.md`: simulator package usage.
 
 ## Development Priorities
 
-1. **P0 - Basic Interface**: Read-only state bridge + high-level locomotion
-2. **P0 - Safety Layer**: Velocity limits, timeout protection, mode gating
-3. **P0 - Voice Bridge**: Restore voice control via safety layer
-4. **P1 - Vision/Arms**: RealSense integration + arm control (post-P0 verification)
+1. P0: read-only state bridge plus high-level locomotion request path.
+2. P0: safety layer with limits, timeout protection, state freshness checks, and mode ownership.
+3. P0: voice bridge routed through safety-controlled commands.
+4. P1: vision and arm workflows after P0 verification on simulator and hardware.
 
 ## External References
 

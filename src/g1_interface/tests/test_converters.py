@@ -40,6 +40,24 @@ def test_lowstate_summary_handles_missing_optional_arrays():
     assert summary.quaternion == [1.0, 0.0, 0.0, 0.0]
 
 
+def test_lowstate_summary_reads_official_nested_imu_state_and_temperature_array():
+    msg = SimpleNamespace(
+        imu_state=SimpleNamespace(
+            rpy=[0.1, 0.2, 0.3],
+            quaternion=[1.0, 0.0, 0.0, 0.0],
+            gyroscope=[0.4, 0.5, 0.6],
+            accelerometer=[0.0, 0.0, 9.81],
+        ),
+        motor_state=[_motor(0.1, 0.2, 0.3, [41, 42])],
+    )
+
+    summary = lowstate_to_summary(msg, source="lowstate")
+
+    assert summary.rpy == [0.1, 0.2, 0.3]
+    assert summary.gyroscope == [0.4, 0.5, 0.6]
+    assert summary.motors[0]["temperature"] == 41.0
+
+
 def test_imu_payload_uses_ros_quaternion_order():
     msg = SimpleNamespace(
         quaternion=[1.0, 0.1, 0.2, 0.3],

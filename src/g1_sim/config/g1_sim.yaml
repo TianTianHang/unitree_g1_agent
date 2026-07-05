@@ -1,0 +1,73 @@
+topics:
+  low_state: lowstate
+  low_state_low_freq: lf/lowstate
+  secondary_imu: secondary_imu
+  low_cmd_root: /lowcmd
+  low_cmd_relative: lowcmd
+  arm_sdk: /arm_sdk
+  user_lowcmd: /user_lowcmd
+  dex3_left_cmd: /dex3/left/cmd
+  dex3_right_cmd: /dex3/right/cmd
+  dex3_left_state: /lf/dex3/left/state
+  dex3_right_state: /lf/dex3/right/state
+  dex3_left_state_legacy: /dex3/left/state
+  dex3_right_state_legacy: /dex3/right/state
+  audio_msg: /audio_msg
+  sport_request: /api/sport/request
+  sport_response: /api/sport/response
+  arm_request: /api/arm/request
+  arm_response: /api/arm/response
+  voice_request: /api/voice/request
+  voice_response: /api/voice/response
+  agv_request: /api/agv/request
+  agv_response: /api/agv/response
+  motion_switcher_request: /api/motion_switcher/request
+  motion_switcher_response: /api/motion_switcher/response
+
+sim:
+  motor_count: 35
+  hand_motor_count: 7
+  # TODO(g1_sim): align default rates with native G1 rates or document throttling.
+  low_state_hz: 50.0
+  low_state_low_freq_hz: 5.0
+  imu_hz: 50.0
+  hand_state_hz: 20.0
+  sport_api_ids:
+    get_fsm_id: 7001
+    get_fsm_mode: 7002
+    get_balance_mode: 7003
+    get_swing_height: 7004
+    get_stand_height: 7005
+    get_phase: 7006
+    set_fsm_id: 7101
+    set_balance_mode: 7102
+    set_swing_height: 7103
+    set_stand_height: 7104
+    set_velocity: 7105
+    set_arm_task: 7106
+    set_speed_mode: 7107
+    switch_to_user_ctrl: 7110
+    switch_to_internal_ctrl: 7111
+  arm_api_ids:
+    execute_action: 7106
+    get_action_list: 7107
+    execute_custom_action: 7108
+    stop_custom_action: 7113
+  voice_api_ids:
+    tts: 1001
+    asr: 1002
+    start_play: 1003
+    stop_play: 1004
+    get_volume: 1005
+    set_volume: 1006
+    set_rgb_led: 1010
+  agv_api_ids:
+    move: 1001
+    height_adjust: 1002
+  motion_switcher_api_ids:
+    check_mode: 1001
+    select_mode: 1002
+    release_mode: 1003
+    set_silent: 1004
+    get_silent: 1005
+  default_asr_text: "模拟 ASR 文本"
