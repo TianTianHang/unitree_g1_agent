@@ -334,10 +334,16 @@ def main(args=None):
     voice_bridge = VoiceBridgeNode(node=node, config=config)
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        voice_bridge.shutdown()
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            voice_bridge.shutdown()
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

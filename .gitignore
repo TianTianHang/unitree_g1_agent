@@ -17,6 +17,24 @@ __pycache__/
 dist/
 build/
 
+# Testing/coverage
+.pytest_cache/
+.coverage
+.coverage.*
+.hypothesis/
+htmlcov/
+*.cover
+.tox/
+.nox/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
 # IDE
 .vscode/
 .idea/

@@ -50,6 +50,23 @@ def test_state_tracker_builds_snapshot_from_lowstate_and_health():
     assert snapshot.current_velocity == {"vx": 0.1, "vy": 0.0, "vyaw": 0.2}
 
 
+def test_state_tracker_accepts_ros_byte_diagnostic_level():
+    tracker = RobotStateTracker(state_timeout_ms=300)
+    tracker.update_from_lowstate_text('{"stamp_sec": 10.0}', now_sec=10.0)
+
+    tracker.update_from_health(
+        SimpleNamespace(status=[SimpleNamespace(level=b"\x00", message="ok", values=[])]),
+        now_sec=10.01,
+    )
+    assert tracker.get_snapshot(10.02).health_state == "ok"
+
+    tracker.update_from_health(
+        SimpleNamespace(status=[SimpleNamespace(level=b"\x01", message="degraded", values=[])]),
+        now_sec=10.03,
+    )
+    assert tracker.get_snapshot(10.04).health_state == "degraded"
+
+
 def test_state_tracker_uses_lowstate_producer_timestamp_for_age():
     tracker = RobotStateTracker(state_timeout_ms=300)
     tracker.update_from_lowstate_text(

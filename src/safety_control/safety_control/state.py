@@ -37,6 +37,16 @@ def _decode_value(value: str) -> Any:
         return value
 
 
+def _diagnostic_level_to_int(value: Any) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (bytes, bytearray)):
+        if len(value) == 1:
+            return value[0]
+        return int(value)
+    return int(value)
+
+
 def normalize_mode(value: Any) -> str | None:
     if value is None:
         return None
@@ -159,7 +169,7 @@ class RobotStateTracker:
 
         for status in statuses:
             try:
-                worst_level = max(worst_level, int(getattr(status, "level", 0)))
+                worst_level = max(worst_level, _diagnostic_level_to_int(getattr(status, "level", 0)))
             except (TypeError, ValueError):
                 worst_level = max(worst_level, 2)
             message = str(getattr(status, "message", "")).strip().lower()
