@@ -277,3 +277,15 @@ def test_agv_move_api_uses_velocity_fields():
     assert code == 0
     assert payload["action"] == "move"
     assert state.snapshot(2.5)["pose"]["x"] == pytest.approx(0.05)
+
+
+def test_simulated_robot_state_asr_index():
+    state = SimulatedRobotState()
+
+    assert state.asr_index == 0
+
+    state.asr_index += 1
+    assert state.asr_index == 1
+
+    state.asr_index += 1
+    assert state.asr_index == 2

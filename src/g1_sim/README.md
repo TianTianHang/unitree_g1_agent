@@ -30,6 +30,7 @@ Subscribed by the simulator:
 - `/user_lowcmd`
 - `/dex3/left/cmd`
 - `/dex3/right/cmd`
+- `~/asr_input`
 - `/api/sport/request`
 - `/api/arm/request`
 - `/api/voice/request`
@@ -60,7 +61,7 @@ Examples:
 
 - Sport: all G1 loco IDs in `g1_loco_api.hpp`, including `get_*`, `set_*`, `set_velocity`, `switch_to_user_ctrl`, and `switch_to_internal_ctrl`.
 - Arm: action execution and action-list responses.
-- Voice: TTS, ASR response payload, `/audio_msg` ASR string, play/stop, volume, RGB LED.
+- Voice: TTS, ASR response payload, `/audio_msg` ASR JSON, play_state JSON, play/stop, volume, RGB LED.
 - AGV: move and height-adjust responses from the G1 high-level API documentation.
 - Motion switcher: mode check/select/release and silent flag.
 
@@ -101,6 +102,7 @@ ros2 launch g1_sim g1_sim.launch.py \
 ros2 topic echo /lowstate
 ros2 topic echo /secondary_imu
 ros2 topic echo /api/sport/response
+ros2 topic echo /audio_msg
 ```
 
 Example sport request:
@@ -108,3 +110,33 @@ Example sport request:
 ```bash
 ros2 topic pub /api/sport/request unitree_api/msg/Request '{...}' --once
 ```
+
+Example ASR input:
+
+```bash
+ros2 topic pub /g1_sim_node/asr_input std_msgs/msg/String "data: '你好世界'" --once
+```
+
+The simulator publishes ASR messages on `/audio_msg` as JSON:
+
+```json
+{
+  "index": 1,
+  "timestamp": 12345678900000000,
+  "text": "你好世界",
+  "angle": 90,
+  "speaker_id": 0,
+  "sense": "unknown",
+  "confidence": 0.95,
+  "language": "zh-CN",
+  "is_final": true
+}
+```
+
+Successful voice `start_play` and `stop_play` API calls also publish playback state on `/audio_msg`:
+
+```json
+{"play_state": 1}
+```
+
+`{"play_state": 0}` is published only when a stop request actually stops an active stream.

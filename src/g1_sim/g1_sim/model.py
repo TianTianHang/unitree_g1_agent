@@ -99,6 +99,7 @@ class SimulatedRobotState:
     last_dex3_cmd: dict[str, Any] | None = None
     active_playback: dict[str, dict[str, Any]] = field(default_factory=dict)
     playback_history: list[dict[str, Any]] = field(default_factory=list)
+    asr_index: int = 0
 
     def integrate(self, now_sec: float) -> None:
         if self.last_update_sec is None:

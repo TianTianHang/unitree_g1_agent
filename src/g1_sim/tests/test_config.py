@@ -1,4 +1,5 @@
 import pytest
+import yaml
 
 from g1_sim.config import G1SimConfig
 
@@ -45,3 +46,19 @@ def test_config_rejects_missing_api_id():
 
     with pytest.raises(ValueError, match="missing API id config in voice_api_ids: tts"):
         G1SimConfig._from_dict(data)
+
+
+def test_default_config_includes_asr_input():
+    config = G1SimConfig.default()
+
+    assert "asr_input" in config.topics
+    assert config.topics["asr_input"] == "~/asr_input"
+
+
+def test_yaml_config_can_override_asr_input(tmp_path):
+    yaml_path = tmp_path / "g1_sim.yaml"
+    yaml_path.write_text(yaml.safe_dump({"topics": {"asr_input": "/custom/asr_input"}}), encoding="utf-8")
+
+    config = G1SimConfig.from_yaml(yaml_path)
+
+    assert config.topics["asr_input"] == "/custom/asr_input"

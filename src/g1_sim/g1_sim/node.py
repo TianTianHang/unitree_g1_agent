@@ -76,6 +76,7 @@ class G1SimNode:
             10,
         )
 
+        node.create_subscription(self.msg["String"], topics["asr_input"], self._on_asr_input_callback, 10)
         node.create_subscription(self.msg["LowCmd"], topics["low_cmd_root"], self.on_lowcmd, 10)
         node.create_subscription(self.msg["LowCmd"], topics["low_cmd_relative"], self.on_lowcmd, 10)
         node.create_subscription(self.msg["LowCmd"], topics["arm_sdk"], self.on_arm_sdk, 10)
@@ -141,26 +142,36 @@ class G1SimNode:
         )
 
     def on_voice_request(self, msg) -> None:
-        self._handle_api_request(
-            msg,
-            service="voice",
-            response_pub=self.voice_response_pub,
-            handler=lambda api_id, params, now_sec: handle_voice_api(
+        sequence_id, api_id = request_identity(msg)
+        try:
+            params = decode_request_parameter(msg)
+            code, payload = handle_voice_api(
                 self.state,
                 api_id,
                 params,
                 self.config.sim["voice_api_ids"],
                 str(self.config.sim["default_asr_text"]),
-            ),
-        )
-        _, api_id = request_identity(msg)
-        if int(api_id) == int(self.config.sim["voice_api_ids"]["asr"]):
-            try:
-                params = decode_request_parameter(msg)
-                text = str(params.get("text", self.config.sim["default_asr_text"]) or self.config.sim["default_asr_text"])
-            except (TypeError, ValueError, json.JSONDecodeError):
-                text = str(self.config.sim["default_asr_text"])
-            self._publish_audio_msg(text)
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            code = 1
+            payload = {"accepted": False, "service": "voice", "error": str(exc)}
+            self.node.get_logger().warning(
+                f"rejecting voice request sequence_id={sequence_id} api_id={api_id}: {exc}"
+            )
+
+        payload.setdefault("service", "voice")
+        self.voice_response_pub.publish(self._build_response(msg, code=code, payload=payload))
+
+        if code != 0:
+            return
+
+        action = payload.get("action")
+        if action == "asr":
+            self.publish_asr_message(str(payload.get("text", "")))
+        elif action == "start_play":
+            self.publish_play_state(is_playing=True)
+        elif action == "stop_play" and payload.get("stopped_streams"):
+            self.publish_play_state(is_playing=False)
 
     def on_agv_request(self, msg) -> None:
         self._handle_api_request(
@@ -257,10 +268,32 @@ class G1SimNode:
         for publisher in self.dex3_right_state_pubs:
             publisher.publish(right)
 
-    def _publish_audio_msg(self, text: str) -> None:
+    def publish_asr_message(self, text: str) -> None:
+        self.state.asr_index += 1
+        asr_json = {
+            "index": self.state.asr_index,
+            "timestamp": self.node.get_clock().now().nanoseconds,
+            "text": text,
+            "angle": 90,
+            "speaker_id": 0,
+            "sense": "unknown",
+            "confidence": 0.95,
+            "language": "zh-CN",
+            "is_final": True,
+        }
         msg = self.msg["String"]()
-        msg.data = text
+        msg.data = json.dumps(asr_json, ensure_ascii=False)
         self.audio_msg_pub.publish(msg)
+
+    def publish_play_state(self, is_playing: bool) -> None:
+        msg = self.msg["String"]()
+        msg.data = json.dumps({"play_state": 1 if is_playing else 0})
+        self.audio_msg_pub.publish(msg)
+
+    def _on_asr_input_callback(self, msg) -> None:
+        text = getattr(msg, "data", "").strip()
+        if text:
+            self.publish_asr_message(text)
 
     def _make_lowstate(self):
         now_sec = self._now_sec()
