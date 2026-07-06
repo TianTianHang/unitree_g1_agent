@@ -17,7 +17,6 @@ stdenv.mkDerivation {
   # 构建工具
   nativeBuildInputs = with pkgs; [
     cmake
-    python3
   ];
 
   # 运行时依赖（除了 ROS2 核心）
@@ -61,6 +60,8 @@ stdenv.mkDerivation {
     # 构建 ROS2 工作空间
     cd cyclonedds_ws
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release \
+                 -DPython3_EXECUTABLE=/usr/bin/python3 \
+                 -DPYTHON_EXECUTABLE=/usr/bin/python3 \
                  --base-paths src/unitree \
                  --event-handlers console_direct+
   '';

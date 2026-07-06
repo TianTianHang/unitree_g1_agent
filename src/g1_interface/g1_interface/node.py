@@ -94,6 +94,10 @@ def build_health_status(
     }
 
 
+def diagnostic_level_for_state(state: str) -> bytes:
+    return b"\x00" if state == "ok" else b"\x01"
+
+
 def build_low_state_payload(
     *,
     stamp_sec: float,
@@ -445,7 +449,7 @@ class G1InterfaceNode:
 
         status = self.msg["DiagnosticStatus"]()
         status.name = "g1_interface"
-        status.level = 0 if status_payload["state"] == "ok" else 1
+        status.level = diagnostic_level_for_state(status_payload["state"])
         status.message = status_payload["state"]
         for key, value in status_payload.items():
             pair = self.msg["KeyValue"]()

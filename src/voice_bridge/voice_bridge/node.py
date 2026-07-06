@@ -15,6 +15,15 @@ def _json(data: dict[str, Any]) -> str:
     return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
 
+def diagnostic_level_to_int(level: Any) -> int | None:
+    if level is None:
+        return None
+    if isinstance(level, (bytes, bytearray, memoryview)):
+        raw = bytes(level)
+        return raw[0] if raw else None
+    return int(level)
+
+
 COMMAND_SCHEMA_VERSION = "voice_command.v1"
 
 
@@ -92,7 +101,7 @@ def diagnostic_summary(msg) -> str:
         statuses.append(
             {
                 "name": getattr(status, "name", ""),
-                "level": getattr(status, "level", None),
+                "level": diagnostic_level_to_int(getattr(status, "level", None)),
                 "message": getattr(status, "message", ""),
             }
         )

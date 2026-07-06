@@ -5,6 +5,7 @@ from g1_interface.node import (
     build_mode_payload,
     build_health_status,
     check_sport_command_allowed,
+    diagnostic_level_for_state,
     parse_safe_loco_command,
     parse_stop_command,
 )
@@ -80,6 +81,19 @@ def test_health_status_reports_stale_state_and_pending_api():
     assert status["lowstate_age_ms"] == 400
     assert status["pending_api_count"] == 2
     assert status["last_api_result"] == {"code": 0, "action": "move"}
+
+
+def test_diagnostic_level_for_state_matches_ros_message_field_type():
+    from diagnostic_msgs.msg import DiagnosticStatus
+
+    ok_status = DiagnosticStatus()
+    ok_status.level = diagnostic_level_for_state("ok")
+
+    degraded_status = DiagnosticStatus()
+    degraded_status.level = diagnostic_level_for_state("degraded")
+
+    assert ok_status.level == b"\x00"
+    assert degraded_status.level == b"\x01"
 
 
 def test_sport_command_allowed_requires_fresh_lowstate():

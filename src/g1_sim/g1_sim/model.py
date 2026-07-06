@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -96,6 +97,8 @@ class SimulatedRobotState:
     last_lowcmd_sec: float | None = None
     last_arm_sdk_sec: float | None = None
     last_dex3_cmd: dict[str, Any] | None = None
+    active_playback: dict[str, dict[str, Any]] = field(default_factory=dict)
+    playback_history: list[dict[str, Any]] = field(default_factory=list)
 
     def integrate(self, now_sec: float) -> None:
         if self.last_update_sec is None:
@@ -162,6 +165,11 @@ class SimulatedRobotState:
             "silent": self.silent,
             "selected_motion_mode": self.selected_motion_mode,
             "agv_height": self.agv_height,
+            "active_playback": {
+                app_name: dict(playback)
+                for app_name, playback in self.active_playback.items()
+            },
+            "playback_history": [dict(playback) for playback in self.playback_history],
         }
 
 
@@ -267,6 +275,33 @@ def handle_voice_api(
             "confidence": float(params.get("confidence", 0.9)),
             "is_final": bool(params.get("is_final", True)),
         }
+    elif action == "start_play":
+        app_name = str(params.get("app_name", ""))
+        stream_id = str(params.get("stream_id", ""))
+        start_time = float(time.time())
+        state.active_playback[app_name] = {
+            "stream_id": stream_id,
+            "start_time": start_time,
+        }
+        payload = {
+            "action": action,
+            "accepted": True,
+            "app_name": app_name,
+            "stream_id": stream_id,
+            "status": "playing",
+        }
+        state.playback_history.append({**payload, "start_time": start_time})
+    elif action == "stop_play":
+        app_name = str(params.get("app_name", ""))
+        playback = state.active_playback.pop(app_name, None)
+        stopped_streams = [] if playback is None else [str(playback.get("stream_id", ""))]
+        payload = {
+            "action": action,
+            "accepted": True,
+            "app_name": app_name,
+            "stopped_streams": stopped_streams,
+        }
+        state.playback_history.append({**payload, "stop_time": float(time.time())})
     elif action == "get_volume":
         payload = {"action": action, "volume": state.volume}
     elif action == "set_volume":

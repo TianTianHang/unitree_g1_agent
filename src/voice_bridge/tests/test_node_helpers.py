@@ -7,6 +7,7 @@ from voice_bridge.node import (
     build_led_payload,
     build_loco_payload,
     build_tts_payload,
+    diagnostic_summary,
 )
 
 
@@ -53,6 +54,24 @@ def test_build_led_payload():
     payload = build_led_payload({"r": 1, "g": 2, "b": 3, "ttl_sec": 0.5})
 
     assert payload == {"source": "voice_bridge", "r": 1, "g": 2, "b": 3, "ttl_sec": 0.5}
+
+
+def test_diagnostic_summary_serializes_ros_byte_level():
+    import json
+
+    from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
+
+    status = DiagnosticStatus()
+    status.name = "g1_interface"
+    status.level = b"\x01"
+    status.message = "degraded"
+
+    msg = DiagnosticArray()
+    msg.status.append(status)
+
+    payload = json.loads(diagnostic_summary(msg))
+
+    assert payload["status"] == [{"level": 1, "message": "degraded", "name": "g1_interface"}]
 
 
 def test_agent_request_state_invalidates_old_requests():

@@ -124,6 +124,119 @@ def test_voice_tts_and_asr_api_payloads():
     assert asr_payload["text"] == config.sim["default_asr_text"]
 
 
+def test_voice_start_play_creates_playback_record():
+    config = G1SimConfig.default()
+    state = SimulatedRobotState()
+
+    code, payload = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["start_play"],
+        params={"app_name": "music", "stream_id": "stream-1"},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+
+    assert code == 0
+    assert payload == {
+        "action": "start_play",
+        "accepted": True,
+        "app_name": "music",
+        "stream_id": "stream-1",
+        "status": "playing",
+    }
+    assert state.active_playback["music"]["stream_id"] == "stream-1"
+    assert isinstance(state.active_playback["music"]["start_time"], float)
+    assert state.playback_history[-1]["action"] == "start_play"
+    assert state.snapshot(1.0)["active_playback"]["music"]["stream_id"] == "stream-1"
+
+
+def test_voice_stop_play_stops_specified_app():
+    config = G1SimConfig.default()
+    state = SimulatedRobotState(
+        active_playback={"music": {"stream_id": "stream-1", "start_time": 1.0}},
+    )
+
+    code, payload = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["stop_play"],
+        params={"app_name": "music"},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+
+    assert code == 0
+    assert payload == {
+        "action": "stop_play",
+        "accepted": True,
+        "app_name": "music",
+        "stopped_streams": ["stream-1"],
+    }
+    assert state.active_playback == {}
+    assert state.playback_history[-1]["action"] == "stop_play"
+    assert state.snapshot(1.0)["playback_history"][-1]["stopped_streams"] == ["stream-1"]
+
+
+def test_voice_playback_tracks_multiple_apps_independently():
+    config = G1SimConfig.default()
+    state = SimulatedRobotState()
+
+    for app_name, stream_id in [("music", "stream-1"), ("alarm", "stream-2")]:
+        handle_voice_api(
+            state,
+            api_id=config.sim["voice_api_ids"]["start_play"],
+            params={"app_name": app_name, "stream_id": stream_id},
+            api_ids=config.sim["voice_api_ids"],
+            default_asr_text=config.sim["default_asr_text"],
+        )
+
+    code, payload = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["stop_play"],
+        params={"app_name": "music"},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+
+    assert code == 0
+    assert payload["stopped_streams"] == ["stream-1"]
+    assert "music" not in state.active_playback
+    assert state.active_playback["alarm"]["stream_id"] == "stream-2"
+
+
+def test_voice_stop_play_ignores_missing_app_and_handles_empty_app_name():
+    config = G1SimConfig.default()
+    state = SimulatedRobotState()
+
+    missing_code, missing_payload = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["stop_play"],
+        params={"app_name": "missing"},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+    start_code, _ = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["start_play"],
+        params={"app_name": "", "stream_id": "empty-app-stream"},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+    stop_code, stop_payload = handle_voice_api(
+        state,
+        api_id=config.sim["voice_api_ids"]["stop_play"],
+        params={"app_name": ""},
+        api_ids=config.sim["voice_api_ids"],
+        default_asr_text=config.sim["default_asr_text"],
+    )
+
+    assert missing_code == 0
+    assert missing_payload["stopped_streams"] == []
+    assert start_code == 0
+    assert stop_code == 0
+    assert stop_payload["app_name"] == ""
+    assert stop_payload["stopped_streams"] == ["empty-app-stream"]
+
+
 def test_motion_switcher_select_and_check_mode():
     config = G1SimConfig.default()
     state = SimulatedRobotState()

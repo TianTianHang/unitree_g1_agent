@@ -16,6 +16,9 @@
 
       # 导入独立的包定义
       callPackage = pkgs.callPackage;
+      systemPytest = pkgs.writeShellScriptBin "pytest" ''
+        exec /usr/bin/python3 -m pytest "$@"
+      '';
     in {
       packages.${system} = {
         # 从独立文件导入包
@@ -34,10 +37,7 @@
             gcc
             ninja
             git
-            python3
-            python3Packages.pytest
-            python3Packages.pyyaml
-            colcon
+            systemPytest
           ];
 
           inputsFrom = [
@@ -68,8 +68,11 @@
 
               echo "ROS2 environment configured"
               echo "AMENT_PREFIX_PATH=$AMENT_PREFIX_PATH"
-            fi
 
+              source install/setup.bash
+            fi
+            export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+            export CYCLONEDDS_URI='file://./cyclone_ds_lo.xml' 
             echo ""
             echo "Available packages:"
             echo "  unitree-sdk2: ${self.packages.${system}.unitree-sdk2}"
