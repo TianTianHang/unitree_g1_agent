@@ -2,11 +2,11 @@
 
 stdenv.mkDerivation {
   pname = "unitree-sdk2";
-  version = "master";
+  version = "7740f8b67e386ab09c3b333187fd5f8582a75ddc";
 
   src = pkgs.fetchurl {
-    url = "https://gh-proxy.com/https://github.com/unitreerobotics/unitree_sdk2/archive/refs/heads/master.tar.gz";
-    sha256 = "eea7220acdc7cc25200d6a3fa3226db4a968b3503befc92eff1207965897c84e";
+    url = "https://gh-proxy.com/https://github.com/unitreerobotics/unitree_sdk2/archive/7740f8b67e386ab09c3b333187fd5f8582a75ddc.tar.gz";
+    sha256 = "0b28e58a3c5ffc3dfd7403b2d3aafe066e4452ec907a4c48308e1fae985c7cb8";
   };
 
   nativeBuildInputs = with pkgs; [

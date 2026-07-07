@@ -6,12 +6,11 @@ in
 
 stdenv.mkDerivation {
   pname = "unitree-ros2";
-  version = "master";
+  version = "668d1ec5a05d1c38d3306bdca7d59f2ba3581a88";
 
-  # 从镜像站获取源码
   src = pkgs.fetchurl {
-    url = "https://gh-proxy.com/https://github.com/unitreerobotics/unitree_ros2/archive/refs/heads/master.tar.gz";
-    sha256 = "59e1a5d24fc244de137f43af3c798e2b5bf092078baa5d7e982754a039560aff";
+    url = "https://gh-proxy.com/https://github.com/unitreerobotics/unitree_ros2/archive/668d1ec5a05d1c38d3306bdca7d59f2ba3581a88.tar.gz";
+    sha256 = "3e96da843c611878e28148ce113d978e5464dec922fc06dcd8c340f8232a6883";
   };
 
   # 构建工具
