@@ -52,3 +52,4 @@ Thumbs.db
 
 .venv
 .unitree
+.worktrees/
