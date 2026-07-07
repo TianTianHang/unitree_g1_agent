@@ -14,7 +14,7 @@ motion_defaults:
   max_motion_duration_sec: 2.0
 
 agent:
-  backend: rule_based
+  backend: pi_rpc
   http_endpoint: ""
   timeout_sec: 2.0
   pi:
