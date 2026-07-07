@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from voice_bridge.pi_config import DEFAULT_PI_CONFIG, validate_pi_config
+
 
 DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
     "voice": {
@@ -28,6 +30,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "backend": "rule_based",
         "http_endpoint": "",
         "timeout_sec": 2.0,
+        "pi": deepcopy(DEFAULT_PI_CONFIG),
     },
     "topics": {
         "asr": "/g1/audio/asr",
@@ -120,11 +123,13 @@ class VoiceBridgeConfig:
             raise ValueError("default_motion_duration_sec must not exceed max_motion_duration_sec")
 
         backend = self.agent.get("backend")
-        if backend not in {"rule_based", "http_json", "disabled"}:
+        if backend not in {"rule_based", "http_json", "pi_rpc", "disabled"}:
             raise ValueError(f"unsupported agent backend: {backend}")
         _require_number(self.agent, "timeout_sec", positive=True)
         if backend == "http_json" and not self.agent.get("http_endpoint"):
             raise ValueError("http_json backend requires http_endpoint")
+        if backend == "pi_rpc":
+            validate_pi_config(self.agent.get("pi", {}))
 
         required_topics = [
             "asr",

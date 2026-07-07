@@ -69,6 +69,39 @@ agent:
         VoiceBridgeConfig.from_yaml(config_path)
 
 
+def test_pi_rpc_backend_is_accepted_with_defaults(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+agent:
+  backend: pi_rpc
+""",
+        encoding="utf-8",
+    )
+
+    config = VoiceBridgeConfig.from_yaml(config_path)
+
+    assert config.agent["backend"] == "pi_rpc"
+    assert config.agent["pi"]["enabled"] is True
+    assert config.agent["pi"]["workspace"] == ".agent-runtime/.unitree_agent"
+
+
+def test_pi_rpc_rejects_blocked_env_keep(tmp_path: Path):
+    config_path = tmp_path / "voice_bridge.yaml"
+    config_path.write_text(
+        """
+agent:
+  backend: pi_rpc
+  pi:
+    env_keep: ["HOME", "ROS_DOMAIN_ID"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="ROS_DOMAIN_ID"):
+        VoiceBridgeConfig.from_yaml(config_path)
+
+
 def test_empty_topic_is_rejected(tmp_path: Path):
     config_path = tmp_path / "voice_bridge.yaml"
     config_path.write_text(

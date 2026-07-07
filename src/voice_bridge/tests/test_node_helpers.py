@@ -8,6 +8,7 @@ from voice_bridge.node import (
     build_loco_payload,
     build_tts_payload,
     diagnostic_summary,
+    _supports_closeable,
 )
 
 
@@ -93,3 +94,123 @@ def test_agent_request_state_only_accepts_latest_session():
 
     assert state.is_current(first, "s1") is False
     assert state.is_current(second, "s2") is True
+
+
+class CloseableAgent:
+    def decide(self, request):
+        raise AssertionError("not used")
+
+    def abort(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class NonCloseableAgent:
+    def decide(self, request):
+        raise AssertionError("not used")
+
+
+def test_supports_closeable_uses_hasattr():
+    assert _supports_closeable(CloseableAgent()) is True
+    assert _supports_closeable(NonCloseableAgent()) is False
+
+
+class FakePublisher:
+    def __init__(self):
+        self.payloads = []
+
+    def publish(self, msg):
+        self.payloads.append(msg.data)
+
+
+class FakeClockNow:
+    nanoseconds = 1_000_000_000
+
+
+class FakeClock:
+    def now(self):
+        return FakeClockNow()
+
+
+class FakeLogger:
+    def warning(self, message):
+        self.message = message
+
+
+class FakeString:
+    def __init__(self):
+        self.data = ""
+
+
+def fake_ros_messages():
+    return {"DiagnosticArray": object, "String": FakeString}
+
+
+class FakeNode:
+    def __init__(self):
+        self.publishers = []
+
+    def create_publisher(self, msg_type, topic, depth):
+        pub = FakePublisher()
+        self.publishers.append(pub)
+        return pub
+
+    def create_subscription(self, *args, **kwargs):
+        return None
+
+    def create_timer(self, *args, **kwargs):
+        return None
+
+    def get_clock(self):
+        return FakeClock()
+
+    def get_logger(self):
+        return FakeLogger()
+
+
+def test_stop_action_aborts_closeable_agent_after_publish(monkeypatch):
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge.internal_types import SessionDecision
+    from voice_bridge import node as node_module
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+
+    class Agent(CloseableAgent):
+        def __init__(self):
+            self.aborted = False
+
+        def abort(self):
+            self.aborted = True
+
+    agent = Agent()
+    node = VoiceBridgeNode(FakeNode(), VoiceBridgeConfig.default(), agent=agent)
+
+    node._publish_action_decision(SessionDecision(kind="action", session_id="s1", text="停止", action="stop"), 1.0)
+
+    assert agent.aborted is True
+    assert len(node.action_pub.payloads) == 1
+
+
+def test_shutdown_closes_closeable_agent(monkeypatch):
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge import node as node_module
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+
+    class Agent(CloseableAgent):
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    agent = Agent()
+    node = VoiceBridgeNode(FakeNode(), VoiceBridgeConfig.default(), agent=agent)
+
+    node.shutdown()
+
+    assert agent.closed is True

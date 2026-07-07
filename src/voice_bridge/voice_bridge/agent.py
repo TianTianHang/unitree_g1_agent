@@ -113,4 +113,8 @@ def build_agent_client(config: VoiceBridgeConfig) -> AgentClient:
         return RuleBasedAgentClient(config)
     if backend == "http_json":
         return HttpJsonAgentClient(config)
+    if backend == "pi_rpc":
+        from voice_bridge.pi_agent import PiRpcAgentClient
+
+        return PiRpcAgentClient(config)
     return DisabledAgentClient()

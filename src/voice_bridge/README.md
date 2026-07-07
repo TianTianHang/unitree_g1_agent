@@ -10,6 +10,24 @@ P0 safety boundary: this node publishes motion intent only to `/voice/cmd/*`. It
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/voice_bridge .venv/bin/python -m pytest src/voice_bridge/tests -q
 ```
 
+## Pi RPC Agent Backend
+
+Set `agent.backend: pi_rpc` to run Pi Agent as a JSONL RPC subprocess. The default workspace is `.agent-runtime/.unitree_agent`, and `voice_bridge` loads `.pi/extensions/robot-tools.ts` with `-e` when the file exists.
+
+Pi is not sandboxed by `voice_bridge`. It may use Pi built-in tools such as bash/read/write under the current user. The ROS motion safety boundary remains in Python: only confirmed `robot_*` tool calls are mapped to `AgentCommand`s, and `voice_bridge` validates/clamps motion, action, LED, and TTS payloads before publishing.
+
+Run unit tests:
+
+```bash
+PYTHONPATH=src/voice_bridge pytest src/voice_bridge/tests -q
+```
+
+Run real Pi smoke tests:
+
+```bash
+PI_AGENT_INTEGRATION=1 PYTHONPATH=src/voice_bridge pytest src/voice_bridge/tests/test_pi_integration.py -q
+```
+
 ## Build
 
 ```bash

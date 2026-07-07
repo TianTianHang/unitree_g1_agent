@@ -24,6 +24,10 @@ def diagnostic_level_to_int(level: Any) -> int | None:
     return int(level)
 
 
+def _supports_closeable(agent: object) -> bool:
+    return hasattr(agent, "abort") and hasattr(agent, "close")
+
+
 COMMAND_SCHEMA_VERSION = "voice_command.v1"
 
 
@@ -145,6 +149,7 @@ class VoiceBridgeNode:
         self.node = node
         self.config = config
         self.agent = agent or build_agent_client(config)
+        self._closeable_agent = self.agent if _supports_closeable(self.agent) else None
         self.session = VoiceSession()
         self.msg = _load_ros_messages()
         self.command_counter = 0
@@ -231,6 +236,8 @@ class VoiceBridgeNode:
             priority="emergency" if action == "stop" else "normal",
         )
         self._publish_string(self.action_pub, payload)
+        if action in {"stop", "cancel"} and self._closeable_agent is not None:
+            self._closeable_agent.abort()
 
     def _call_agent(self, event_confidence: float | None, decision: SessionDecision, now_sec: float) -> None:
         session_id = decision.session_id or new_session_id(now_sec)
@@ -320,6 +327,8 @@ class VoiceBridgeNode:
 
     def shutdown(self) -> None:
         self._agent_requests.invalidate()
+        if self._closeable_agent is not None:
+            self._closeable_agent.close()
         self._agent_executor.shutdown(wait=False, cancel_futures=True)
 
 
