@@ -1,0 +1,30 @@
+server:
+  host: "127.0.0.1"
+  port: 8765
+  allow_remote: false
+
+topics:
+  asr: /g1/audio/asr
+  voice_state: /voice/state
+  voice_debug_events: /voice/debug/events
+  robot_mode: /g1/state/mode
+  safety_state: /g1/state/safety
+  health: /g1/state/health
+  voice_cmd_loco: /voice/cmd/loco
+  voice_cmd_action: /voice/cmd/action
+  tts: /g1/cmd/audio/tts
+  led: /g1/cmd/audio/led
+  safe_cmd_loco: /g1/safe_cmd/loco
+  safe_cmd_stop: /g1/safe_cmd/stop
+  safety_decisions: /g1/safety/decisions
+
+defaults:
+  asr_confidence: 0.9
+  asr_is_final: true
+  asr_source: "debug"
+
+timeline:
+  max_events: 200
+  state_timeout_ms: 2000
+
+asr_default_text: "小宇"
