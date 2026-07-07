@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from voice_bridge.pi_types import BLOCKED_ENV_PREFIXES, DEFAULT_PI_TIMEOUTS
 
 DEFAULT_PI_WORKSPACE = Path(".agent-runtime") / ".unitree_agent"
+DEFAULT_ROBOT_TOOLS_EXTENSION = "src/voice_bridge/pi_extensions/robot-tools.ts"
 
 ROBOT_APPEND_SYSTEM_PROMPT = (
     "You control a Unitree G1 robot only by calling robot_* tools. "
@@ -22,7 +23,7 @@ DEFAULT_PI_CONFIG: dict[str, Any] = {
     "workspace": str(DEFAULT_PI_WORKSPACE),
     "model": "",
     "provider": "",
-    "extensions": [],
+    "extensions": [DEFAULT_ROBOT_TOOLS_EXTENSION],
     "env_keep": ["HOME", "PATH", "NODE_PATH", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY"],
     "env_extra": {},
     "timeouts": deepcopy(DEFAULT_PI_TIMEOUTS),
@@ -52,7 +53,15 @@ def resolve_workspace(pi_config: dict[str, Any], repo_root: Path) -> Path:
     return path
 
 
-def build_pi_command(pi_config: dict[str, Any], workspace: Path) -> list[str]:
+def _resolve_extension_path(extension: str, repo_root: Path | None) -> str:
+    path = Path(extension)
+    if path.is_absolute():
+        return str(path)
+    root = repo_root or resolve_repo_root()
+    return str(root / path)
+
+
+def build_pi_command(pi_config: dict[str, Any], workspace: Path, repo_root: Path | None = None) -> list[str]:
     command = str(pi_config.get("command") or "pi")
     args = pi_config.get("args", ["--mode", "rpc", "--no-session"])
     cmd = [command, *list(args)]
@@ -66,7 +75,7 @@ def build_pi_command(pi_config: dict[str, Any], workspace: Path) -> list[str]:
     if robot_tools.exists():
         cmd.extend(["-e", str(robot_tools)])
     for extension in pi_config.get("extensions", []):
-        cmd.extend(["-e", str(extension)])
+        cmd.extend(["-e", _resolve_extension_path(str(extension), repo_root)])
     append_prompt = str(pi_config.get("append_system_prompt", DEFAULT_PI_CONFIG["append_system_prompt"]) or "")
     if append_prompt:
         cmd.extend(["--append-system-prompt", append_prompt])

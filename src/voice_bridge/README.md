@@ -12,7 +12,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/voice_bridge .venv/bin/python -m
 
 ## Pi RPC Agent Backend
 
-Set `agent.backend: pi_rpc` to run Pi Agent as a JSONL RPC subprocess. The default workspace is `.agent-runtime/.unitree_agent`, and `voice_bridge` loads `.pi/extensions/robot-tools.ts` with `-e` when the file exists.
+Set `agent.backend: pi_rpc` to run Pi Agent as a JSONL RPC subprocess. The default workspace is `.agent-runtime/.unitree_agent`; `.agent-runtime` is runtime/cache space only. The project-owned robot tools extension lives at `src/voice_bridge/pi_extensions/robot-tools.ts` and is loaded through `agent.pi.extensions`.
 
 Pi is not sandboxed by `voice_bridge`. It may use Pi built-in tools such as bash/read/write under the current user. The ROS motion safety boundary remains in Python: only confirmed `robot_*` tool calls are mapped to `AgentCommand`s, and `voice_bridge` validates/clamps motion, action, LED, and TTS payloads before publishing.
 

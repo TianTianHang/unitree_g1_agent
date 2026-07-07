@@ -33,6 +33,10 @@ def test_resolve_repo_root_searches_for_git_marker(tmp_path: Path):
     assert resolve_repo_root(child) == root
 
 
+def test_default_pi_config_lists_tracked_robot_tools_extension():
+    assert DEFAULT_PI_CONFIG["extensions"] == ["src/voice_bridge/pi_extensions/robot-tools.ts"]
+
+
 def test_build_pi_command_loads_robot_tools_when_present(tmp_path: Path):
     workspace = tmp_path / ".agent-runtime" / ".unitree_agent"
     tools = workspace / ".pi" / "extensions" / "robot-tools.ts"
@@ -45,7 +49,7 @@ def test_build_pi_command_loads_robot_tools_when_present(tmp_path: Path):
             "args": ["--mode", "rpc", "--no-session"],
             "model": "gpt-5-mini",
             "provider": "openai",
-            "extensions": ["extra.ts"],
+            "extensions": [],
         },
         workspace,
     )
@@ -61,10 +65,33 @@ def test_build_pi_command_loads_robot_tools_when_present(tmp_path: Path):
         "openai",
         "-e",
         str(tools),
-        "-e",
-        "extra.ts",
         "--append-system-prompt",
         DEFAULT_PI_CONFIG["append_system_prompt"],
+    ]
+
+
+def test_build_pi_command_loads_configured_extensions_without_workspace_tools(tmp_path: Path):
+    workspace = tmp_path / ".agent-runtime" / ".unitree_agent"
+    repo_root = tmp_path / "repo"
+
+    command = build_pi_command(
+        {
+            "command": "pi",
+            "args": ["--mode", "rpc", "--no-session"],
+            "extensions": ["src/voice_bridge/pi_extensions/robot-tools.ts"],
+            "append_system_prompt": "",
+        },
+        workspace,
+        repo_root=repo_root,
+    )
+
+    assert command == [
+        "pi",
+        "--mode",
+        "rpc",
+        "--no-session",
+        "-e",
+        str(repo_root / "src/voice_bridge/pi_extensions/robot-tools.ts"),
     ]
 
 

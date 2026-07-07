@@ -24,7 +24,8 @@ agent:
     workspace: ".agent-runtime/.unitree_agent"
     model: ""
     provider: ""
-    extensions: []
+    extensions:
+      - "src/voice_bridge/pi_extensions/robot-tools.ts"
     env_keep:
       - HOME
       - PATH

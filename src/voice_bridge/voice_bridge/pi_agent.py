@@ -367,7 +367,7 @@ class PiRpcAgentClient:
             if self._transport is not None:
                 return self._transport
             transport = self._transport_factory()
-            command = build_pi_command(self._pi_config, self._workspace)
+            command = build_pi_command(self._pi_config, self._workspace, repo_root=self._repo_root)
             self._workspace.mkdir(parents=True, exist_ok=True)
             transport.start(command, self._workspace, scrubbed_env(self._pi_config))
             transport.send({"type": "get_state"}, timeout=float(self._timeouts["startup_health_sec"]))

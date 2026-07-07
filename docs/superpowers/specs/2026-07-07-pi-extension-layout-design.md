@@ -42,7 +42,7 @@ extensions:
   - "src/voice_bridge/pi_extensions/robot-tools.ts"
 ```
 
-`build_pi_command()` should load configured extensions explicitly. The current automatic lookup of `workspace/.pi/extensions/robot-tools.ts` may be retained temporarily for compatibility, but the source-of-truth path for this project should be the configured tracked extension.
+`build_pi_command()` should load configured extensions explicitly. Configured relative extension paths are repo-relative for readability, but the subprocess command should pass absolute paths because Pi resolves `-e` relative to its process cwd. The current automatic lookup of `workspace/.pi/extensions/robot-tools.ts` may be retained temporarily for compatibility, but the source-of-truth path for this project should be the configured tracked extension.
 
 ## Migration Scope
 
@@ -57,6 +57,6 @@ The migration should:
 ## Success Criteria
 
 - No project-owned source files remain under `.agent-runtime/.unitree_agent/.pi/extensions/`.
-- Pi command construction still includes `-e src/voice_bridge/pi_extensions/robot-tools.ts`.
+- Pi command construction resolves the configured `src/voice_bridge/pi_extensions/robot-tools.ts` value to an absolute `-e` path.
 - Existing Pi RPC unit tests pass.
 - Real Pi smoke test still passes when `PI_AGENT_INTEGRATION=1` and `pi` is configured.
