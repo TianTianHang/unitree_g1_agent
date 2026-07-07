@@ -29,6 +29,23 @@ def _supports_closeable(agent: object) -> bool:
 
 
 COMMAND_SCHEMA_VERSION = "voice_command.v1"
+DEBUG_EVENT_SCHEMA_VERSION = "voice_debug_event.v1"
+
+
+def build_debug_event(
+    event: str,
+    session_id: str | None,
+    data: dict[str, Any],
+    *,
+    timestamp: float,
+) -> dict[str, Any]:
+    return {
+        "schema_version": DEBUG_EVENT_SCHEMA_VERSION,
+        "timestamp": float(timestamp),
+        "session_id": session_id,
+        "event": event,
+        "data": data,
+    }
 
 
 def build_loco_payload(
@@ -170,6 +187,7 @@ class VoiceBridgeNode:
         self.tts_pub = node.create_publisher(self.msg["String"], topics["tts"], 10)
         self.led_pub = node.create_publisher(self.msg["String"], topics["led"], 10)
         self.state_pub = node.create_publisher(self.msg["String"], topics["voice_state"], 10)
+        self.debug_pub = node.create_publisher(self.msg["String"], topics["debug_events"], 10)
 
         node.create_subscription(self.msg["String"], topics["asr"], self.on_asr, 10)
         node.create_subscription(self.msg["String"], topics["robot_mode"], self.on_robot_mode, 10)
@@ -192,6 +210,29 @@ class VoiceBridgeNode:
         msg.data = _json(payload)
         publisher.publish(msg)
 
+    def _publish_debug_event(self, event: str, session_id: str | None, data: dict[str, Any], now_sec: float) -> None:
+        try:
+            self._publish_string(self.debug_pub, build_debug_event(event, session_id, data, timestamp=now_sec))
+        except Exception as exc:  # Debug telemetry must never affect command behavior.
+            self.node.get_logger().warning(f"failed to publish voice debug event: {exc}")
+
+    def _agent_result_to_debug_data(self, result: AgentResult) -> dict[str, Any]:
+        return {
+            "commands": [{"kind": command.kind, "params": dict(command.params)} for command in result.commands],
+            "reply_text": result.reply_text,
+            "led": result.led,
+            "requires_confirmation": result.requires_confirmation,
+        }
+
+    def _publish_command_debug_event(
+        self,
+        topic: str,
+        session_id: str | None,
+        payload: dict[str, Any],
+        now_sec: float,
+    ) -> None:
+        self._publish_debug_event("command_published", session_id, {"topic": topic, "payload": payload}, now_sec)
+
     def on_robot_mode(self, msg) -> None:
         self.robot_mode = msg.data
 
@@ -205,6 +246,18 @@ class VoiceBridgeNode:
         now_sec = self._now_sec()
         try:
             event = parse_asr_event(msg.data)
+            self._publish_debug_event(
+                "asr_received",
+                None,
+                {
+                    "text": event.text,
+                    "confidence": event.confidence,
+                    "is_final": event.is_final,
+                    "source": event.source,
+                    "stamp": event.stamp,
+                },
+                now_sec,
+            )
             decision = self.session.handle_asr(event, self.config, now_sec)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             self.last_error = str(exc)
@@ -214,6 +267,7 @@ class VoiceBridgeNode:
 
         self.last_asr_text = event.text
         self.last_decision = decision.to_dict()
+        self._publish_debug_event("session_decision", decision.session_id, decision.to_dict(), now_sec)
 
         if decision.kind == "action":
             self._publish_action_decision(decision, now_sec)
@@ -236,6 +290,9 @@ class VoiceBridgeNode:
             priority="emergency" if action == "stop" else "normal",
         )
         self._publish_string(self.action_pub, payload)
+        self._publish_command_debug_event(
+            self.config.topics["voice_action"], session_id, payload, self._now_sec()
+        )
         if action in {"stop", "cancel"} and self._closeable_agent is not None:
             self._closeable_agent.abort()
 
@@ -248,6 +305,17 @@ class VoiceBridgeNode:
             robot_mode=self.robot_mode,
             safety_state=self.safety_state,
             health_state=self.health_state,
+        )
+        self._publish_debug_event(
+            "agent_started",
+            session_id,
+            {
+                "text": request.text,
+                "backend": self.config.agent["backend"],
+                "robot_mode": self.robot_mode,
+                "safety_state": self.safety_state,
+            },
+            now_sec,
         )
         generation = self._agent_requests.start(session_id)
         self._agent_executor.submit(self._run_agent_request, request, generation, now_sec)
@@ -274,11 +342,18 @@ class VoiceBridgeNode:
                     return
                 self.last_error = str(exc)
                 self.session.mark_agent_failed(request_sec)
+                self._publish_debug_event(
+                    "agent_error",
+                    request.session_id,
+                    {"error": str(exc), "fallback_reply_text": "语音服务暂时不可用"},
+                    request_sec,
+                )
                 self._publish_string(self.tts_pub, build_tts_payload("语音服务暂时不可用", request.session_id))
             self.node.get_logger().warning(f"agent request failed: {exc}")
             self.publish_state()
 
     def _publish_agent_result(self, result: AgentResult, request: AgentRequest, now_sec: float) -> None:
+        self._publish_debug_event("agent_result", request.session_id, self._agent_result_to_debug_data(result), now_sec)
         for command in result.commands:
             publish_sec = self._now_sec()
             if command.kind == "loco":
@@ -290,6 +365,7 @@ class VoiceBridgeNode:
                     created_at=publish_sec,
                 )
                 self._publish_string(self.loco_pub, payload)
+                self._publish_command_debug_event(self.config.topics["voice_loco"], request.session_id, payload, publish_sec)
             elif command.kind == "action":
                 action = str(command.params.get("action", "stop"))
                 payload = build_action_payload(
@@ -301,17 +377,28 @@ class VoiceBridgeNode:
                     priority="emergency" if action == "stop" else "normal",
                 )
                 self._publish_string(self.action_pub, payload)
+                self._publish_command_debug_event(
+                    self.config.topics["voice_action"], request.session_id, payload, publish_sec
+                )
             elif command.kind == "say":
                 text = str(command.params.get("text", ""))
                 if text:
-                    self._publish_string(self.tts_pub, build_tts_payload(text, request.session_id))
+                    payload = build_tts_payload(text, request.session_id)
+                    self._publish_string(self.tts_pub, payload)
+                    self._publish_command_debug_event(self.config.topics["tts"], request.session_id, payload, publish_sec)
             elif command.kind == "led":
-                self._publish_string(self.led_pub, build_led_payload(command.params))
+                payload = build_led_payload(command.params)
+                self._publish_string(self.led_pub, payload)
+                self._publish_command_debug_event(self.config.topics["led"], request.session_id, payload, publish_sec)
 
         if result.reply_text:
-            self._publish_string(self.tts_pub, build_tts_payload(result.reply_text, request.session_id))
+            payload = build_tts_payload(result.reply_text, request.session_id)
+            self._publish_string(self.tts_pub, payload)
+            self._publish_command_debug_event(self.config.topics["tts"], request.session_id, payload, self._now_sec())
         if result.led:
-            self._publish_string(self.led_pub, build_led_payload(result.led))
+            payload = build_led_payload(result.led)
+            self._publish_string(self.led_pub, payload)
+            self._publish_command_debug_event(self.config.topics["led"], request.session_id, payload, self._now_sec())
 
     def publish_state(self) -> None:
         with self._lock:

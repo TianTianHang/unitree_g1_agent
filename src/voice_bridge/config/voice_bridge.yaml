@@ -52,6 +52,7 @@ topics:
   tts: /g1/cmd/audio/tts
   led: /g1/cmd/audio/led
   voice_state: /voice/state
+  debug_events: /voice/debug/events
   robot_mode: /g1/state/mode
   safety_state: /g1/state/safety
   health: /g1/state/health

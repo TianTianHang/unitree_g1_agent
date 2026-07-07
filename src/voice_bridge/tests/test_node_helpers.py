@@ -214,3 +214,68 @@ def test_shutdown_closes_closeable_agent(monkeypatch):
     node.shutdown()
 
     assert agent.closed is True
+
+
+def test_build_debug_event_payload():
+    from voice_bridge.node import DEBUG_EVENT_SCHEMA_VERSION, build_debug_event
+
+    payload = build_debug_event(
+        "agent_result",
+        "s1",
+        {"reply_text": "收到"},
+        timestamp=10.5,
+    )
+
+    assert payload == {
+        "schema_version": DEBUG_EVENT_SCHEMA_VERSION,
+        "timestamp": 10.5,
+        "session_id": "s1",
+        "event": "agent_result",
+        "data": {"reply_text": "收到"},
+    }
+
+
+def test_debug_event_publish_is_best_effort(monkeypatch):
+    import json
+
+    from voice_bridge import node as node_module
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+
+    node = VoiceBridgeNode(FakeNode(), VoiceBridgeConfig.default(), agent=NonCloseableAgent())
+    node._publish_debug_event("agent_started", "s1", {"text": "向前"}, 1.0)
+
+    payload = json.loads(node.debug_pub.payloads[-1])
+    assert payload["schema_version"] == "voice_debug_event.v1"
+    assert payload["event"] == "agent_started"
+    assert payload["session_id"] == "s1"
+    assert payload["data"] == {"text": "向前"}
+
+
+def test_agent_result_debug_event_publishes_before_commands(monkeypatch):
+    import json
+
+    from voice_bridge import node as node_module
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge.internal_types import AgentCommand, AgentRequest, AgentResult
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+
+    node = VoiceBridgeNode(FakeNode(), VoiceBridgeConfig.default(), agent=NonCloseableAgent())
+    request = AgentRequest(session_id="s1", text="向前", asr_confidence=0.9)
+    result = AgentResult(
+        commands=[AgentCommand(kind="loco", params={"vx": 0.25, "vy": 0.0, "vyaw": 0.0, "duration_sec": 1.0})],
+        reply_text="收到",
+        led={"r": 0, "g": 1, "b": 0},
+    )
+
+    node._publish_agent_result(result, request, 1.0)
+
+    debug_payload = json.loads(node.debug_pub.payloads[0])
+    assert debug_payload["event"] == "agent_result"
+    assert debug_payload["data"]["reply_text"] == "收到"
+    assert debug_payload["data"]["commands"][0]["kind"] == "loco"
+    assert len(node.loco_pub.payloads) == 1

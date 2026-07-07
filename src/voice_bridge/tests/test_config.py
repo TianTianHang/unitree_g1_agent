@@ -114,3 +114,23 @@ topics:
 
     with pytest.raises(ValueError, match="missing topic config: asr"):
         VoiceBridgeConfig.from_yaml(config_path)
+
+
+def test_default_config_includes_debug_events_topic():
+    from voice_bridge.config import VoiceBridgeConfig
+
+    config = VoiceBridgeConfig.default()
+
+    assert config.topics["debug_events"] == "/voice/debug/events"
+
+
+def test_config_requires_debug_events_topic():
+    import pytest
+
+    from voice_bridge.config import DEFAULT_CONFIG, VoiceBridgeConfig
+
+    raw = {key: dict(value) for key, value in DEFAULT_CONFIG.items()}
+    raw["topics"].pop("debug_events", None)
+
+    with pytest.raises(ValueError, match="debug_events"):
+        VoiceBridgeConfig._from_dict(raw)
