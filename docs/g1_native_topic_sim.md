@@ -40,7 +40,7 @@ Request/response APIs follow the same mapping. SDK2 constructs API DDS channels 
 - Sport API ID `7105` updates an internal velocity command and pose estimate.
 - Sport get APIs return official `{"data": ...}` response payloads, matching the G1 ROS2/SDK2 clients.
 - Voice TTS accepts text and echoes a response payload.
-- Voice ASR returns a configurable text payload through `/api/voice/response` and publishes the same text on ROS2 `/audio_msg`, which maps to SDK2 DDS `rt/audio_msg`.
+- Voice ASR returns a configurable text payload through `/api/voice/response` and publishes the same text on ROS2 `/audio_msg`, which maps to SDK2 DDS `rt/audio_msg`. `g1_interface` bridges ASR-shaped `/audio_msg` events into the project-internal `/g1/audio/asr` topic consumed by `voice_bridge`; non-ASR audio events such as play-state JSON are bridged to `/g1/audio/event` for downstream consumers.
 - Voice volume and RGB LED APIs update mock state.
 - AGV move and height-adjust APIs are modeled from `docs/G1_H1_API_Documentation.md`; confirm whether `/api/agv/*` is exposed on the target firmware.
 - Arm and motion-switcher APIs return accepted mock responses.

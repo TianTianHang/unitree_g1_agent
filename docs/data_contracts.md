@@ -6,7 +6,8 @@
 
 ```text
 g1_interface
-  publishes /g1/state/low, /g1/state/mode, /g1/state/health
+  subscribes /audio_msg
+  publishes /g1/audio/asr, /g1/audio/event, /g1/state/low, /g1/state/mode, /g1/state/health
 
 voice_bridge
   subscribes /g1/state/mode, /g1/state/safety, /g1/state/health
@@ -75,6 +76,32 @@ g1_interface
 - `lowstate_age_ms`: `int | null`
 - `pending_api_count`: `int`
 - `last_api_result`: `object | null`
+
+### `/g1/audio/asr`
+
+`std_msgs/msg/String`。`g1_interface` 从 native `/audio_msg` 转发 ASR 文本事件到该项目内部 topic。
+
+允许两种输入形态：
+
+- plain text，例如 `停止`
+- JSON object，且 `text` 字段非空，例如：
+
+```json
+{
+  "index": 1,
+  "timestamp": 1000000000,
+  "text": "宇树，向前走一秒",
+  "confidence": 0.95,
+  "is_final": true,
+  "language": "zh-CN"
+}
+```
+
+### `/g1/audio/event`
+
+`std_msgs/msg/String`。`g1_interface` 从 native `/audio_msg` 转发非 ASR 音频事件到该项目内部 topic。
+
+用于桥接非 ASR 的 `/audio_msg` 消息（如播放状态 `{"play_state": 1}`），供 debug panel、音频状态监控等下游节点消费。消息原样转发，不做 schema 解析。
 
 ## voice_bridge 发布结构
 
