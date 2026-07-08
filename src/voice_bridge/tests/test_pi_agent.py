@@ -232,83 +232,19 @@ def test_decide_returns_no_motion_when_agent_end_missing():
     client = make_client(
         fake,
         config_with_pi_timeouts(
-            first_event_sec=0.5,
-            motion_turn_hard_sec=0.5,
-            conversational_turn_sec=0.5,
-            stall_detection_sec=0.05,
+            conversational_turn_sec=0.05,
         ),
     )
 
     assert client.decide(make_request()).commands == []
 
 
-def test_decide_returns_prompt_without_events_after_first_event_timeout():
+def test_decide_returns_empty_after_conversational_turn_timeout():
     fake = FakeTransport()
     client = make_client(
         fake,
         config_with_pi_timeouts(
-            first_event_sec=0.05,
-            motion_turn_hard_sec=0.5,
-            conversational_turn_sec=0.5,
-            stall_detection_sec=0.5,
-        ),
-    )
-
-    started = time.monotonic()
-    result = client.decide(make_request())
-    elapsed = time.monotonic() - started
-
-    assert result == AgentResult()
-    assert elapsed < 0.25
-
-
-def test_decide_returns_incomplete_turn_after_stall_timeout():
-    fake = FakeTransport(
-        [
-            {
-                "type": "tool_execution_start",
-                "toolCallId": "w1",
-                "toolName": "robot_walk",
-                "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
-            },
-        ]
-    )
-    client = make_client(
-        fake,
-        config_with_pi_timeouts(
-            first_event_sec=0.5,
-            motion_turn_hard_sec=0.5,
-            conversational_turn_sec=0.5,
-            stall_detection_sec=0.05,
-        ),
-    )
-
-    started = time.monotonic()
-    result = client.decide(make_request())
-    elapsed = time.monotonic() - started
-
-    assert result == AgentResult()
-    assert elapsed < 0.25
-
-
-def test_decide_uses_motion_hard_timeout_after_motion_tool_starts():
-    fake = FakeTransport(
-        [
-            {
-                "type": "tool_execution_start",
-                "toolCallId": "w1",
-                "toolName": "robot_walk",
-                "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
-            },
-        ]
-    )
-    client = make_client(
-        fake,
-        config_with_pi_timeouts(
-            first_event_sec=0.5,
-            motion_turn_hard_sec=0.05,
-            conversational_turn_sec=0.5,
-            stall_detection_sec=0.5,
+            conversational_turn_sec=0.05,
         ),
     )
 
@@ -379,10 +315,7 @@ def test_decide_wakes_when_transport_closes_in_next_generation():
     client = make_client(
         fake,
         config_with_pi_timeouts(
-            first_event_sec=0.4,
-            motion_turn_hard_sec=0.8,
             conversational_turn_sec=0.8,
-            stall_detection_sec=0.8,
         ),
     )
 
@@ -410,10 +343,7 @@ def test_abort_wakes_decide_and_returns_no_motion():
     client = make_client(
         fake,
         config_with_pi_timeouts(
-            first_event_sec=0.5,
-            motion_turn_hard_sec=0.5,
             conversational_turn_sec=0.5,
-            stall_detection_sec=0.5,
         ),
     )
     result_box = {}
