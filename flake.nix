@@ -69,7 +69,9 @@
               echo "ROS2 environment configured"
               echo "AMENT_PREFIX_PATH=$AMENT_PREFIX_PATH"
 
-              source install/setup.bash
+              if [ -f install/local_setup.bash ]; then
+                source install/local_setup.bash
+              fi
             fi
             export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
             export CYCLONEDDS_URI='file://./cyclone_ds_lo.xml' 

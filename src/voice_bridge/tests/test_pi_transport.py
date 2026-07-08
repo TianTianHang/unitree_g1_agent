@@ -23,10 +23,19 @@ class FakeStdin(io.StringIO):
         return None
 
 
+class BlockingStdout:
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        time.sleep(10)
+        raise StopIteration
+
+
 class FakeProc:
-    def __init__(self, stdout_lines: list[bytes]):
+    def __init__(self, stdout_lines: list[bytes] | None):
         self.stdin = FakeStdin()
-        self.stdout = iter(stdout_lines)
+        self.stdout = BlockingStdout() if stdout_lines is None else iter(stdout_lines)
         self.stderr = iter([])
         self.pid = 4242
         self.returncode = None
@@ -45,7 +54,7 @@ def make_transport(proc: FakeProc) -> PiRpcTransport:
 
 
 def test_send_correlates_response_by_id(monkeypatch):
-    proc = FakeProc([])
+    proc = FakeProc(None)
     transport = make_transport(proc)
 
     def responder():
@@ -90,9 +99,24 @@ def test_get_event_discards_old_generation_events():
     assert transport.get_event(old_generation, timeout=0.01) is None
 
 
+def test_get_event_returns_transport_close_wakeup_across_generation():
+    transport = PiRpcTransport()
+    old_generation = transport.current_generation()
+    new_generation = transport._bump_generation()
+    transport._events.put((new_generation, {"type": "_transport_wakeup", "reason": "closed"}))
+
+    assert transport.get_event(old_generation, timeout=0.1) == (
+        new_generation,
+        {"type": "_transport_wakeup", "reason": "closed"},
+    )
+
+
 def test_reader_finally_wakes_pending_and_event_waiters():
     proc = FakeProc([])
-    transport = make_transport(proc)
+    transport = PiRpcTransport()
+    transport._proc = proc
+    with transport._state_lock:
+        transport._state = transport._State.RUNNING
     generation = transport.current_generation()
 
     response_q: queue.Queue = queue.Queue(maxsize=1)

@@ -19,7 +19,7 @@ agent:
   timeout_sec: 2.0
   pi:
     enabled: true
-    command: "pi"
+    command: "/home/ubuntu/.nvm/versions/node/v24.18.0/bin/pi"
     args: ["--mode", "rpc", "--no-session"]
     workspace: ".agent-runtime/.unitree_agent"
     model: ""

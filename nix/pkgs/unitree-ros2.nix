@@ -27,6 +27,45 @@ stdenv.mkDerivation {
   ROS_DISTRO = "humble";
   ROS2_PATH = ros2Path;
 
+  patchPhase = ''
+    runHook prePatch
+
+    # The upstream message packages optionally generate Connext DDS IDL files
+    # through rosidl_generator_dds_idl. The system ROS Humble install used by
+    # this project does not ship that generator, and the simulator only needs
+    # the standard ROS2 message artifacts.
+    ${pkgs.python3}/bin/python3 - <<'PY'
+from pathlib import Path
+
+for path in Path("cyclonedds_ws/src/unitree").glob("unitree_*/CMakeLists.txt"):
+    text = path.read_text()
+    text = text.replace("find_package(rosidl_generator_dds_idl REQUIRED)\n", "")
+    start = text.find("\nrosidl_generate_dds_interfaces(")
+    while start != -1:
+        dep_start = text.find("\nadd_dependencies(", start)
+        if dep_start == -1:
+            raise SystemExit(f"missing add_dependencies block in {path}")
+        search_from = dep_start + len("\nadd_dependencies(")
+        depth = 1
+        pos = search_from
+        while pos < len(text) and depth:
+            if text[pos] == "(":
+                depth += 1
+            elif text[pos] == ")":
+                depth -= 1
+            pos += 1
+        if depth:
+            raise SystemExit(f"unterminated add_dependencies block in {path}")
+        while pos < len(text) and text[pos] in " \t\r\n":
+            pos += 1
+        text = text[:start] + "\n" + text[pos:]
+        start = text.find("\nrosidl_generate_dds_interfaces(")
+    path.write_text(text)
+PY
+
+    runHook postPatch
+  '';
+
   # 禁用自动的 fixupPhase，因为 ROS2 包已经有正确的 RPATH
   dontFixup = true;
 
@@ -34,19 +73,22 @@ stdenv.mkDerivation {
     echo "Using external ROS2 from: ${ros2Path}"
 
     # Source ROS2 环境（构建时需要）
-    set -e
-    source ${ros2Path}/setup.bash
     set +e
+    source ${ros2Path}/setup.bash
+    set -e
   '';
 
   buildPhase = ''
+    set -eo pipefail
     echo "Building unitree ROS2 packages..."
 
     # 添加系统 PATH 以访问 colcon
     export PATH="/usr/bin:$PATH"
 
     # Source ROS2 环境
+    set +e
     source ${ros2Path}/setup.bash
+    set -e
 
     # 检查源码结构
     echo "Source directory contents:"
@@ -83,6 +125,19 @@ stdenv.mkDerivation {
     if [ -d cyclonedds_ws/install ]; then
       echo "Found install directory, copying..."
       cp -r cyclonedds_ws/install/* $out/
+
+      for pkg in unitree_api unitree_hg unitree_go; do
+        if [ ! -f "$out/$pkg/share/colcon-core/packages/$pkg" ]; then
+          echo "Error: expected ROS2 package '$pkg' was not installed" >&2
+          exit 1
+        fi
+
+        for shell in bash sh zsh; do
+          if [ -f "$out/$pkg/share/$pkg/local_setup.$shell" ]; then
+            ln -s "share/$pkg/local_setup.$shell" "$out/$pkg/local_setup.$shell"
+          fi
+        done
+      done
 
       echo "Installation complete"
       echo "Final contents:"

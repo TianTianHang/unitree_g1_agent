@@ -81,13 +81,17 @@ class PiRpcTransport:
         self._proc = proc
         self._reader_thread = threading.Thread(target=self._reader, daemon=True)
         self._stderr_thread = threading.Thread(target=self._stderr_reader, daemon=True)
-        self._reader_thread.start()
-        self._stderr_thread.start()
         with self._state_lock:
             self._state = self._State.RUNNING
+        self._reader_thread.start()
+        self._stderr_thread.start()
 
     def wake_events(self, reason: str) -> None:
         self._events.put((self._get_generation(), {"type": "_transport_wakeup", "reason": reason}))
+
+    @staticmethod
+    def _is_terminal_wakeup(event: dict[str, Any]) -> bool:
+        return event.get("type") == "_transport_wakeup" and event.get("reason") in {"closed", "closing"}
 
     def _route_message(self, msg: dict[str, Any]) -> None:
         msg_id = msg.get("id")
@@ -180,7 +184,7 @@ class PiRpcTransport:
                 generation, event = self._events.get(timeout=remaining)
             except queue.Empty:
                 return None
-            if generation == expected_generation:
+            if generation == expected_generation or self._is_terminal_wakeup(event):
                 return generation, event
 
     def close(self) -> None:
@@ -419,12 +423,23 @@ class PiRpcAgentClient:
             self._ensure_session(transport)
             generation = transport.current_generation()
             transport.send(
-                {"type": "prompt", "text": _build_prompt_text(request)},
+                {"type": "prompt", "message": _build_prompt_text(request)},
                 timeout=float(self._timeouts["command_response_sec"]),
             )
-            hard_deadline = time.monotonic() + float(self._timeouts["motion_turn_hard_sec"])
+            turn_started_at = time.monotonic()
+            first_event_deadline = turn_started_at + float(self._timeouts["first_event_sec"])
+            stall_timeout = float(self._timeouts["stall_detection_sec"])
+            hard_deadline = turn_started_at + float(self._timeouts["conversational_turn_sec"])
+            motion_deadline = turn_started_at + float(self._timeouts["motion_turn_hard_sec"])
+            saw_event = False
+            last_event_at = turn_started_at
             while not self._aborted.is_set():
-                remaining = hard_deadline - time.monotonic()
+                now = time.monotonic()
+                if transport.current_generation() != generation:
+                    break
+                activity_deadline = last_event_at + stall_timeout if saw_event else first_event_deadline
+                deadline = min(hard_deadline, activity_deadline)
+                remaining = deadline - now
                 if remaining <= 0:
                     self.abort()
                     break
@@ -435,10 +450,14 @@ class PiRpcAgentClient:
                 if event.get("type") == "_transport_wakeup":
                     break
                 events.append(event)
+                saw_event = True
+                last_event_at = time.monotonic()
                 event_type = event.get("type")
                 if event_type == "tool_execution_start":
                     tool_name = str(event.get("toolName", ""))
                     if tool_name in CUSTOM_TOOLS and isinstance(event.get("toolCallId"), str):
+                        if CUSTOM_TOOLS[tool_name] in {"loco", "action"}:
+                            hard_deadline = min(hard_deadline, motion_deadline)
                         pending_tools[str(event["toolCallId"])] = {
                             "order": len(pending_tools),
                             "tool_name": tool_name,

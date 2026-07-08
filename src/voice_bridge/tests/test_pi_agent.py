@@ -2,6 +2,7 @@ import math
 import queue
 import threading
 import time
+from copy import deepcopy
 from pathlib import Path
 
 from voice_bridge.config import VoiceBridgeConfig
@@ -174,6 +175,22 @@ def make_client(fake: FakeTransport, config: VoiceBridgeConfig | None = None) ->
     )
 
 
+def config_with_pi_timeouts(**timeouts) -> VoiceBridgeConfig:
+    base = VoiceBridgeConfig.default()
+    agent = deepcopy(base.agent)
+    pi_config = deepcopy(agent.get("pi", {}))
+    pi_timeouts = deepcopy(pi_config.get("timeouts", {}))
+    pi_timeouts.update(timeouts)
+    pi_config["timeouts"] = pi_timeouts
+    agent["pi"] = pi_config
+    return VoiceBridgeConfig(
+        voice=deepcopy(base.voice),
+        motion_defaults=deepcopy(base.motion_defaults),
+        agent=agent,
+        topics=deepcopy(base.topics),
+    )
+
+
 def test_decide_sends_prompt_and_returns_confirmed_tools():
     fake = FakeTransport(
         [
@@ -194,7 +211,8 @@ def test_decide_sends_prompt_and_returns_confirmed_tools():
     assert fake.started is True
     assert fake.sent[0]["type"] == "get_state"
     assert fake.sent[-1]["type"] == "prompt"
-    assert "User said: 向前走然后停下" in fake.sent[-1]["text"]
+    assert "text" not in fake.sent[-1]
+    assert "User said: 向前走然后停下" in fake.sent[-1]["message"]
     assert result.commands == [AgentCommand(kind="loco", params={"vx": 0.1, "vy": 0.0, "vyaw": 0.0, "duration_sec": 1.0})]
     assert result.reply_text == "收到"
 
@@ -211,9 +229,148 @@ def test_decide_returns_no_motion_when_agent_end_missing():
             {"type": "tool_execution_end", "toolCallId": "w1", "toolName": "robot_walk", "result": {}, "isError": False},
         ]
     )
-    client = make_client(fake)
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.5,
+            motion_turn_hard_sec=0.5,
+            conversational_turn_sec=0.5,
+            stall_detection_sec=0.05,
+        ),
+    )
 
     assert client.decide(make_request()).commands == []
+
+
+def test_decide_returns_prompt_without_events_after_first_event_timeout():
+    fake = FakeTransport()
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.05,
+            motion_turn_hard_sec=0.5,
+            conversational_turn_sec=0.5,
+            stall_detection_sec=0.5,
+        ),
+    )
+
+    started = time.monotonic()
+    result = client.decide(make_request())
+    elapsed = time.monotonic() - started
+
+    assert result == AgentResult()
+    assert elapsed < 0.25
+
+
+def test_decide_returns_incomplete_turn_after_stall_timeout():
+    fake = FakeTransport(
+        [
+            {
+                "type": "tool_execution_start",
+                "toolCallId": "w1",
+                "toolName": "robot_walk",
+                "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
+            },
+        ]
+    )
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.5,
+            motion_turn_hard_sec=0.5,
+            conversational_turn_sec=0.5,
+            stall_detection_sec=0.05,
+        ),
+    )
+
+    started = time.monotonic()
+    result = client.decide(make_request())
+    elapsed = time.monotonic() - started
+
+    assert result == AgentResult()
+    assert elapsed < 0.25
+
+
+def test_decide_uses_motion_hard_timeout_after_motion_tool_starts():
+    fake = FakeTransport(
+        [
+            {
+                "type": "tool_execution_start",
+                "toolCallId": "w1",
+                "toolName": "robot_walk",
+                "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
+            },
+        ]
+    )
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.5,
+            motion_turn_hard_sec=0.05,
+            conversational_turn_sec=0.5,
+            stall_detection_sec=0.5,
+        ),
+    )
+
+    started = time.monotonic()
+    result = client.decide(make_request())
+    elapsed = time.monotonic() - started
+
+    assert result == AgentResult()
+    assert elapsed < 0.25
+
+
+def test_decide_wakes_when_transport_closes_in_next_generation():
+    class ClosingTransport(FakeTransport):
+        def __init__(self):
+            super().__init__()
+            self.generation = 10
+            self.events: queue.Queue[tuple[int, dict]] = queue.Queue()
+            self.prompt_sent = False
+
+        def send(self, command, timeout=5.0):
+            response = super().send(command, timeout)
+            if command["type"] == "prompt":
+                self.prompt_sent = True
+                self.events.put((self.generation + 1, {"type": "_transport_wakeup", "reason": "closed"}))
+            return response
+
+        def current_generation(self):
+            if self.prompt_sent:
+                return self.generation
+            return super().current_generation()
+
+        def get_event(self, expected_generation, timeout=5.0):
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                try:
+                    generation, event = self.events.get(timeout=remaining)
+                except queue.Empty:
+                    return None
+                if generation == expected_generation or event.get("reason") in {"closed", "closing"}:
+                    return generation, event
+
+    fake = ClosingTransport()
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.4,
+            motion_turn_hard_sec=0.8,
+            conversational_turn_sec=0.8,
+            stall_detection_sec=0.8,
+        ),
+    )
+
+    started = time.monotonic()
+    result = client.decide(make_request())
+    elapsed = time.monotonic() - started
+
+    assert result == AgentResult()
+    assert elapsed < 0.2
+    assert not any(command["type"] == "abort" for command in fake.sent)
 
 
 def test_abort_wakes_decide_and_returns_no_motion():
@@ -228,7 +385,15 @@ def test_abort_wakes_decide_and_returns_no_motion():
             {"type": "tool_execution_end", "toolCallId": "w1", "toolName": "robot_walk", "result": {}, "isError": False},
         ]
     )
-    client = make_client(fake)
+    client = make_client(
+        fake,
+        config_with_pi_timeouts(
+            first_event_sec=0.5,
+            motion_turn_hard_sec=0.5,
+            conversational_turn_sec=0.5,
+            stall_detection_sec=0.5,
+        ),
+    )
     result_box = {}
 
     thread = threading.Thread(target=lambda: result_box.setdefault("result", client.decide(make_request())))
@@ -243,7 +408,7 @@ def test_abort_wakes_decide_and_returns_no_motion():
 
 
 def test_close_delegates_to_transport():
-    fake = FakeTransport()
+    fake = FakeTransport([{"type": "agent_end", "messages": []}])
     client = make_client(fake)
     client.decide(make_request())
 
