@@ -13,6 +13,7 @@ native_topics:
   arm_sdk: /arm_sdk
   sport_request: /api/sport/request
   sport_response: /api/sport/response
+  audio_msg: /audio_msg
   voice_request: /api/voice/request
   voice_response: /api/voice/response
   motion_switcher_request: /api/motion_switcher/request
@@ -21,6 +22,10 @@ native_topics:
   dex3_right_cmd: /dex3/right/cmd
   dex3_left_state: /lf/dex3/left/state
   dex3_right_state: /lf/dex3/right/state
+
+project_topics:
+  asr: /g1/audio/asr
+  audio_event: /g1/audio/event
 
 control:
   default_mode: sport_api_loco

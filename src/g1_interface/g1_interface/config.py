@@ -24,6 +24,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "arm_sdk": "/arm_sdk",
         "sport_request": "/api/sport/request",
         "sport_response": "/api/sport/response",
+        "audio_msg": "/audio_msg",
         "voice_request": "/api/voice/request",
         "voice_response": "/api/voice/response",
         "motion_switcher_request": "/api/motion_switcher/request",
@@ -32,6 +33,10 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "dex3_right_cmd": "/dex3/right/cmd",
         "dex3_left_state": "/lf/dex3/left/state",
         "dex3_right_state": "/lf/dex3/right/state",
+    },
+    "project_topics": {
+        "asr": "/g1/audio/asr",
+        "audio_event": "/g1/audio/event",
     },
     "control": {
         "default_mode": "sport_api_loco",
@@ -74,6 +79,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 class G1InterfaceConfig:
     robot: dict[str, Any]
     native_topics: dict[str, str]
+    project_topics: dict[str, str]
     control: dict[str, Any]
     timeouts: dict[str, int]
     sport_api: dict[str, Any]
@@ -95,6 +101,7 @@ class G1InterfaceConfig:
         config = cls(
             robot=dict(raw["robot"]),
             native_topics=dict(raw["native_topics"]),
+            project_topics=dict(raw["project_topics"]),
             control=dict(raw["control"]),
             timeouts=dict(raw["timeouts"]),
             sport_api=dict(raw["sport_api"]),
@@ -104,15 +111,22 @@ class G1InterfaceConfig:
 
     def validate(self) -> None:
         required_topics = [
-            "low_state",
-            "low_state_low_freq",
-            "secondary_imu",
-            "sport_request",
-            "sport_response",
+            ("native_topics", "low_state"),
+            ("native_topics", "low_state_low_freq"),
+            ("native_topics", "secondary_imu"),
+            ("native_topics", "sport_request"),
+            ("native_topics", "sport_response"),
+            ("native_topics", "audio_msg"),
+            ("project_topics", "asr"),
+            ("project_topics", "audio_event"),
         ]
-        missing_topics = [key for key in required_topics if not self.native_topics.get(key)]
+        missing_topics = []
+        for section, key in required_topics:
+            mapping = getattr(self, section)
+            if not mapping.get(key):
+                missing_topics.append(f"{section}.{key}")
         if missing_topics:
-            raise ValueError(f"missing native topic config: {', '.join(missing_topics)}")
+            raise ValueError(f"missing topic config: {', '.join(missing_topics)}")
 
         required_timeouts = [
             "state_timeout_ms",
