@@ -6,6 +6,7 @@ from g1_interface.node import (
     build_health_status,
     check_sport_command_allowed,
     diagnostic_level_for_state,
+    normalize_audio_asr_message,
     parse_safe_loco_command,
     parse_stop_command,
 )
@@ -66,6 +67,24 @@ def test_parse_stop_command_requires_safety_validation():
 
     with pytest.raises(ValueError, match="safe_stop action must be stop or cancel"):
         parse_stop_command('{"validation_result": {"allowed": true}, "action": "dance"}')
+
+
+def test_normalize_audio_asr_message_forwards_plain_text():
+    assert normalize_audio_asr_message("停止") == "停止"
+
+
+def test_normalize_audio_asr_message_forwards_asr_json_unchanged():
+    raw = '{"text":"宇树，向前走一秒","confidence":0.95,"is_final":true,"index":1}'
+
+    assert normalize_audio_asr_message(raw) == raw
+
+
+def test_normalize_audio_asr_message_filters_non_asr_audio_events():
+    assert normalize_audio_asr_message("") is None
+    assert normalize_audio_asr_message("   ") is None
+    assert normalize_audio_asr_message('{"play_state":1}') is None
+    assert normalize_audio_asr_message('{"text":"   ","confidence":0.95}') is None
+    assert normalize_audio_asr_message("[1, 2, 3]") is None
 
 
 def test_health_status_reports_stale_state_and_pending_api():

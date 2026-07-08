@@ -98,6 +98,26 @@ def diagnostic_level_for_state(state: str) -> bytes:
     return b"\x00" if state == "ok" else b"\x01"
 
 
+def normalize_audio_asr_message(raw_text: str) -> str | None:
+    text = raw_text.strip()
+    if not text:
+        return None
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+    if not isinstance(payload, dict):
+        return None
+
+    event_text = str(payload.get("text", "")).strip()
+    if not event_text:
+        return None
+
+    return text
+
+
 def build_low_state_payload(
     *,
     stamp_sec: float,
@@ -226,6 +246,8 @@ class G1InterfaceNode:
         self.mode_pub = node.create_publisher(self.msg["String"], "/g1/state/mode", 10)
         self.health_pub = node.create_publisher(self.msg["DiagnosticArray"], "/g1/state/health", 10)
         self.imu_pub = node.create_publisher(self.msg["Imu"], "/g1/state/imu", 10)
+        self.asr_pub = node.create_publisher(self.msg["String"], config.project_topics["asr"], 10)
+        self.audio_event_pub = node.create_publisher(self.msg["String"], config.project_topics["audio_event"], 10)
         self.sport_request_pub = node.create_publisher(
             self.msg["Request"],
             config.native_topics["sport_request"],
@@ -254,6 +276,12 @@ class G1InterfaceNode:
             self.msg["Response"],
             config.native_topics["sport_response"],
             self.on_sport_response,
+            10,
+        )
+        node.create_subscription(
+            self.msg["String"],
+            config.native_topics["audio_msg"],
+            self.on_audio_msg,
             10,
         )
         node.create_subscription(self.msg["String"], "/g1/safe_cmd/loco", self.on_safe_loco, 10)
@@ -342,6 +370,21 @@ class G1InterfaceNode:
             self.node.get_logger().warning(f"ignoring invalid sport API response: {exc}")
             return
         self._update_sport_state_from_response(self.last_api_result)
+
+    def on_audio_msg(self, msg) -> None:
+        raw = getattr(msg, "data", "").strip()
+        if not raw:
+            return
+
+        normalized = normalize_audio_asr_message(raw)
+        if normalized is not None:
+            text = self.msg["String"]()
+            text.data = normalized
+            self.asr_pub.publish(text)
+        else:
+            text = self.msg["String"]()
+            text.data = raw
+            self.audio_event_pub.publish(text)
 
     def on_safe_loco(self, msg):
         self._publish_sport_command(msg.data, parse_safe_loco_command, "safe_loco")
