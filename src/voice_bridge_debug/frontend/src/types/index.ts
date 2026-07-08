@@ -66,11 +66,17 @@ export interface AgentCommand {
 }
 
 export interface AgentResult {
+  status?: "pending" | "complete" | "error";
   commands: AgentCommand[];
   reply_text: string | null;
   led: Record<string, unknown> | null;
   requires_confirmation: boolean;
   session_id: string | null;
+  request_text?: string | null;
+  backend?: string | null;
+  started_at?: number | null;
+  completed_at?: number | null;
+  error?: string | null;
 }
 
 export interface ConnectionStatus {

@@ -120,6 +120,19 @@ def test_scrubbed_env_removes_ros_dds_and_ssh_values():
     }
 
 
+def test_scrubbed_env_prepends_absolute_pi_command_directory_to_path():
+    env = scrubbed_env(
+        {
+            "command": "/opt/node/bin/pi",
+            "env_keep": ["PATH"],
+            "env_extra": {},
+        },
+        base_env={"PATH": "/usr/bin"},
+    )
+
+    assert env["PATH"] == "/opt/node/bin:/usr/bin"
+
+
 @pytest.mark.parametrize(
     ("pi_config", "message"),
     [

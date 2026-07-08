@@ -123,10 +123,44 @@ class DebugBridgeNode:
         event_data = data.get("data") if isinstance(data.get("data"), dict) else {}
         timestamp = float(data.get("timestamp", self._now_sec()))
         self.state.push_event("voice_debug", event, event_data, session_id=session_id, timestamp=timestamp)
-        if event == "agent_result":
-            result = dict(event_data)
-            result["session_id"] = session_id
+        if event == "agent_started":
+            self.state.set_agent_result(
+                {
+                    "status": "pending",
+                    "session_id": session_id,
+                    "request_text": event_data.get("text"),
+                    "backend": event_data.get("backend"),
+                    "started_at": timestamp,
+                    "commands": [],
+                    "reply_text": None,
+                    "led": None,
+                    "requires_confirmation": False,
+                }
+            )
+        elif event == "agent_result":
+            result = {
+                "status": "complete",
+                "session_id": session_id,
+                "completed_at": timestamp,
+                "commands": event_data.get("commands", []),
+                "reply_text": event_data.get("reply_text"),
+                "led": event_data.get("led"),
+                "requires_confirmation": bool(event_data.get("requires_confirmation", False)),
+            }
             self.state.set_agent_result(result)
+        elif event == "agent_error":
+            self.state.set_agent_result(
+                {
+                    "status": "error",
+                    "session_id": session_id,
+                    "completed_at": timestamp,
+                    "commands": [],
+                    "reply_text": event_data.get("fallback_reply_text"),
+                    "led": None,
+                    "requires_confirmation": False,
+                    "error": event_data.get("error"),
+                }
+            )
 
     def on_robot_mode(self, msg) -> None:
         self.state.set_robot_state(robot_mode=parse_json_topic(msg.data))

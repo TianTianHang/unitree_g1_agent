@@ -472,6 +472,8 @@ class PiRpcAgentClient:
                     if tool_call_id in pending_tools:
                         pending_tools[tool_call_id]["confirmed"] = True
                 elif event_type == "agent_end":
+                    if event.get("willRetry") is True:
+                        continue
                     normal_completion = True
                     break
         except PiTransportError:

@@ -90,6 +90,12 @@ def scrubbed_env(pi_config: dict[str, Any], base_env: Mapping[str, str] | None =
     for key, value in pi_config.get("env_extra", {}).items():
         if not _blocked(str(key)):
             env[str(key)] = str(value)
+    command_path = Path(str(pi_config.get("command") or ""))
+    if command_path.is_absolute():
+        command_dir = str(command_path.parent)
+        path_parts = [part for part in str(env.get("PATH", "")).split(os.pathsep) if part]
+        if command_dir not in path_parts:
+            env["PATH"] = os.pathsep.join([command_dir, *path_parts])
     return env
 
 

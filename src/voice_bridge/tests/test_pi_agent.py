@@ -320,6 +320,28 @@ def test_decide_uses_motion_hard_timeout_after_motion_tool_starts():
     assert elapsed < 0.25
 
 
+def test_decide_waits_for_final_agent_end_after_auto_retry():
+    fake = FakeTransport(
+        [
+            {"type": "agent_end", "messages": [{"role": "assistant", "content": [], "stopReason": "error"}], "willRetry": True},
+            {
+                "type": "tool_execution_start",
+                "toolCallId": "say1",
+                "toolName": "robot_say",
+                "args": {"text": "第二轮收到"},
+            },
+            {"type": "tool_execution_end", "toolCallId": "say1", "toolName": "robot_say", "result": {}, "isError": False},
+            {"type": "agent_end", "messages": [{"role": "assistant", "content": [{"type": "text", "text": "好的"}]}], "willRetry": False},
+        ]
+    )
+    client = make_client(fake)
+
+    result = client.decide(make_request())
+
+    assert result.commands == [AgentCommand(kind="say", params={"text": "第二轮收到"})]
+    assert result.reply_text == "好的"
+
+
 def test_decide_wakes_when_transport_closes_in_next_generation():
     class ClosingTransport(FakeTransport):
         def __init__(self):
