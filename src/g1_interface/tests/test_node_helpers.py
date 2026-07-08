@@ -83,6 +83,7 @@ def test_normalize_audio_asr_message_filters_non_asr_audio_events():
     assert normalize_audio_asr_message("") is None
     assert normalize_audio_asr_message("   ") is None
     assert normalize_audio_asr_message('{"play_state":1}') is None
+    assert normalize_audio_asr_message('{"text":null,"confidence":0.95}') is None
     assert normalize_audio_asr_message('{"text":"   ","confidence":0.95}') is None
     assert normalize_audio_asr_message("[1, 2, 3]") is None
 

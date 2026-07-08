@@ -111,7 +111,10 @@ def normalize_audio_asr_message(raw_text: str) -> str | None:
     if not isinstance(payload, dict):
         return None
 
-    event_text = str(payload.get("text", "")).strip()
+    event_text = payload.get("text")
+    if not isinstance(event_text, str):
+        return None
+    event_text = event_text.strip()
     if not event_text:
         return None
 
