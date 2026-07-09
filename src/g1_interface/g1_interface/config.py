@@ -62,6 +62,9 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
             "switch_to_internal_ctrl": 7111,
         },
     },
+    "asr": {
+        "source_mode": "builtin",
+    },
 }
 
 
@@ -83,6 +86,7 @@ class G1InterfaceConfig:
     control: dict[str, Any]
     timeouts: dict[str, int]
     sport_api: dict[str, Any]
+    asr: dict[str, Any]
 
     @classmethod
     def default(cls) -> "G1InterfaceConfig":
@@ -105,9 +109,22 @@ class G1InterfaceConfig:
             control=dict(raw["control"]),
             timeouts=dict(raw["timeouts"]),
             sport_api=dict(raw["sport_api"]),
+            asr=dict(raw["asr"]),
         )
         config.validate()
         return config
+
+    def with_asr_source_mode(self, source_mode: str) -> "G1InterfaceConfig":
+        raw = {
+            "robot": self.robot,
+            "native_topics": self.native_topics,
+            "project_topics": self.project_topics,
+            "control": self.control,
+            "timeouts": self.timeouts,
+            "sport_api": self.sport_api,
+            "asr": {**self.asr, "source_mode": source_mode},
+        }
+        return self._from_dict(raw)
 
     def validate(self) -> None:
         required_topics = [
@@ -148,6 +165,10 @@ class G1InterfaceConfig:
         encoding = self.sport_api.get("parameter_encoding")
         if encoding != "json":
             raise ValueError(f"unsupported sport API parameter encoding: {encoding}")
+
+        source_mode = self.asr.get("source_mode")
+        if source_mode not in {"builtin", "custom", "both"}:
+            raise ValueError(f"unsupported asr source_mode: {source_mode}")
 
         api_ids = self.sport_api.get("api_ids")
         required_api_ids = ["set_velocity", "get_fsm_mode"]

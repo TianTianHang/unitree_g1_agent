@@ -107,3 +107,39 @@ def test_audio_msg_callback_bridges_empty_json_to_audio_event():
     assert node.publishers["/g1/audio/asr"].messages == []
     published = node.publishers["/g1/audio/event"].messages
     assert [msg.data for msg in published] == ["[1, 2, 3]"]
+
+
+def test_audio_msg_callback_drops_builtin_asr_when_source_mode_custom():
+    node = FakeNode()
+    config = G1InterfaceConfig.default().with_asr_source_mode("custom")
+    bridge = G1InterfaceNode(node=node, config=config)
+    raw = '{"text":"宇树，向前走一秒","confidence":0.95,"is_final":true,"index":1}'
+
+    bridge.on_audio_msg(_string_msg(raw))
+
+    assert node.publishers["/g1/audio/asr"].messages == []
+    assert node.publishers["/g1/audio/event"].messages == []
+
+
+def test_audio_msg_callback_keeps_audio_events_when_source_mode_custom():
+    node = FakeNode()
+    config = G1InterfaceConfig.default().with_asr_source_mode("custom")
+    bridge = G1InterfaceNode(node=node, config=config)
+
+    bridge.on_audio_msg(_string_msg('{"play_state":1}'))
+
+    assert node.publishers["/g1/audio/asr"].messages == []
+    published = node.publishers["/g1/audio/event"].messages
+    assert [msg.data for msg in published] == ['{"play_state":1}']
+
+
+def test_audio_msg_callback_forwards_builtin_asr_when_source_mode_both():
+    node = FakeNode()
+    config = G1InterfaceConfig.default().with_asr_source_mode("both")
+    bridge = G1InterfaceNode(node=node, config=config)
+    raw = '{"text":"宇树，向前走一秒","confidence":0.95,"is_final":true,"index":1}'
+
+    bridge.on_audio_msg(_string_msg(raw))
+
+    published = node.publishers["/g1/audio/asr"].messages
+    assert [msg.data for msg in published] == [raw]

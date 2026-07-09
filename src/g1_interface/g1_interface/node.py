@@ -121,6 +121,10 @@ def normalize_audio_asr_message(raw_text: str) -> str | None:
     return text
 
 
+def should_forward_native_asr(source_mode: str) -> bool:
+    return source_mode in {"builtin", "both"}
+
+
 def build_low_state_payload(
     *,
     stamp_sec: float,
@@ -381,13 +385,15 @@ class G1InterfaceNode:
 
         normalized = normalize_audio_asr_message(raw)
         if normalized is not None:
-            text = self.msg["String"]()
-            text.data = normalized
-            self.asr_pub.publish(text)
-        else:
-            text = self.msg["String"]()
-            text.data = raw
-            self.audio_event_pub.publish(text)
+            if should_forward_native_asr(str(self.config.asr["source_mode"])):
+                text = self.msg["String"]()
+                text.data = normalized
+                self.asr_pub.publish(text)
+            return
+
+        text = self.msg["String"]()
+        text.data = raw
+        self.audio_event_pub.publish(text)
 
     def on_safe_loco(self, msg):
         self._publish_sport_command(msg.data, parse_safe_loco_command, "safe_loco")
@@ -517,7 +523,11 @@ def main(args=None):
     node = rclpy.create_node("g1_interface_node")
     node.declare_parameter("config_path", "")
     config_path = node.get_parameter("config_path").get_parameter_value().string_value
+    node.declare_parameter("asr_source_mode", "")
+    asr_source_mode = node.get_parameter("asr_source_mode").get_parameter_value().string_value
     config = G1InterfaceConfig.from_yaml(config_path) if config_path else G1InterfaceConfig.default()
+    if asr_source_mode:
+        config = config.with_asr_source_mode(asr_source_mode)
     G1InterfaceNode(node=node, config=config)
     try:
         rclpy.spin(node)

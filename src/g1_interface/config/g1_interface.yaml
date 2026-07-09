@@ -27,6 +27,9 @@ project_topics:
   asr: /g1/audio/asr
   audio_event: /g1/audio/event
 
+asr:
+  source_mode: builtin
+
 control:
   default_mode: sport_api_loco
   allow_low_level: false

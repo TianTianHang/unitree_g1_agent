@@ -81,6 +81,20 @@ g1_interface
 
 `std_msgs/msg/String`。`g1_interface` 从 native `/audio_msg` 转发 ASR 文本事件到该项目内部 topic。
 
+ASR source selection is controlled by `g1_interface` config `asr.source_mode`:
+
+- `builtin`: forward ASR-shaped native `/audio_msg` messages to `/g1/audio/asr`; do not start `asr_node`.
+- `custom`: drop ASR-shaped native `/audio_msg` messages; start `asr_node`, which publishes `/g1/audio/asr` directly.
+- `both`: forward native ASR and allow custom ASR concurrently; downstream consumers may receive duplicate semantic commands and this mode is for diagnostics only.
+
+Recommended runtime commands:
+
+```bash
+ros2 launch g1_interface g1_interface.launch.py asr_source_mode:=builtin
+ros2 launch g1_interface g1_interface.launch.py asr_source_mode:=custom
+ros2 launch asr_node asr_node.launch.py
+```
+
 允许两种输入形态：
 
 - plain text，例如 `停止`

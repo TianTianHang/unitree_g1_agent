@@ -6,15 +6,17 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     config_path = LaunchConfiguration("config_path")
+    asr_source_mode = LaunchConfiguration("asr_source_mode")
     return LaunchDescription(
         [
             DeclareLaunchArgument("config_path", default_value=""),
+            DeclareLaunchArgument("asr_source_mode", default_value=""),
             Node(
                 package="g1_interface",
                 executable="g1_interface_node",
                 name="g1_interface_node",
                 output="screen",
-                parameters=[{"config_path": config_path}],
+                parameters=[{"config_path": config_path, "asr_source_mode": asr_source_mode}],
             ),
         ]
     )

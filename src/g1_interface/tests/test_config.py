@@ -163,3 +163,44 @@ timeouts:
 
     with pytest.raises(ValueError, match="missing timeout config: state_timeout_ms, api_response_timeout_ms"):
         G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_default_asr_source_mode_is_builtin():
+    config = G1InterfaceConfig.default()
+
+    assert config.asr["source_mode"] == "builtin"
+
+
+def test_asr_source_mode_loaded_from_yaml(tmp_path):
+    path = tmp_path / "g1_interface.yaml"
+    path.write_text(
+        """
+asr:
+  source_mode: custom
+""",
+        encoding="utf-8",
+    )
+
+    config = G1InterfaceConfig.from_yaml(path)
+
+    assert config.asr["source_mode"] == "custom"
+
+
+def test_invalid_asr_source_mode_rejected(tmp_path):
+    path = tmp_path / "g1_interface.yaml"
+    path.write_text(
+        """
+asr:
+  source_mode: invalid
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported asr source_mode"):
+        G1InterfaceConfig.from_yaml(path)
+
+
+def test_with_asr_source_mode_returns_overridden_config():
+    config = G1InterfaceConfig.default().with_asr_source_mode("custom")
+
+    assert config.asr["source_mode"] == "custom"
