@@ -26,6 +26,7 @@ native_topics:
 project_topics:
   asr: /g1/audio/asr
   audio_event: /g1/audio/event
+  safety_state: /g1/state/safety
 
 asr:
   source_mode: builtin
@@ -43,6 +44,10 @@ timeouts:
   api_response_timeout_ms: 500
   health_publish_period_ms: 200
   mode_query_period_ms: 500
+  motion_watchdog_period_ms: 50
+  safety_heartbeat_timeout_ms: 1200
+  mode_freshness_timeout_ms: 1500
+  api_unhealthy_timeout_count: 3
 
 sport_api:
   parameter_encoding: json

@@ -37,6 +37,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
     "project_topics": {
         "asr": "/g1/audio/asr",
         "audio_event": "/g1/audio/event",
+        "safety_state": "/g1/state/safety",
     },
     "control": {
         "default_mode": "sport_api_loco",
@@ -51,6 +52,10 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "api_response_timeout_ms": 500,
         "health_publish_period_ms": 200,
         "mode_query_period_ms": 500,
+        "motion_watchdog_period_ms": 50,
+        "safety_heartbeat_timeout_ms": 1200,
+        "mode_freshness_timeout_ms": 1500,
+        "api_unhealthy_timeout_count": 3,
     },
     "sport_api": {
         "parameter_encoding": "json",
@@ -136,6 +141,7 @@ class G1InterfaceConfig:
             ("native_topics", "audio_msg"),
             ("project_topics", "asr"),
             ("project_topics", "audio_event"),
+            ("project_topics", "safety_state"),
         ]
         missing_topics = []
         for section, key in required_topics:
@@ -150,6 +156,10 @@ class G1InterfaceConfig:
             "api_response_timeout_ms",
             "health_publish_period_ms",
             "mode_query_period_ms",
+            "motion_watchdog_period_ms",
+            "safety_heartbeat_timeout_ms",
+            "mode_freshness_timeout_ms",
+            "api_unhealthy_timeout_count",
         ]
         missing_timeouts = []
         for key in required_timeouts:
@@ -158,6 +168,13 @@ class G1InterfaceConfig:
                 missing_timeouts.append(key)
         if missing_timeouts:
             raise ValueError(f"missing timeout config: {', '.join(missing_timeouts)}")
+
+        for key in required_timeouts:
+            if self.timeouts[key] <= 0:
+                raise ValueError(f"{key} must be positive")
+        api_unhealthy_timeout_count = self.timeouts["api_unhealthy_timeout_count"]
+        if not isinstance(api_unhealthy_timeout_count, int):
+            raise ValueError("api_unhealthy_timeout_count must be a positive integer")
 
         if self.control["allow_low_level"] and not self.control["require_manual_confirm_for_mode_switch"]:
             raise ValueError("low level control requires manual confirmation")

@@ -36,6 +36,15 @@ class Imu:
         self.linear_acceleration = types.SimpleNamespace(x=0.0, y=0.0, z=0.0)
 
 
+class ClockType:
+    STEADY_TIME = "steady_time"
+
+
+class Clock:
+    def __init__(self, clock_type=None):
+        self.clock_type = clock_type
+
+
 class Request:
     def __init__(self):
         self.header = types.SimpleNamespace(identity=types.SimpleNamespace(id=0, api_id=0))
@@ -79,6 +88,7 @@ def pytest_configure():
             "KeyValue": KeyValue,
         },
     )
+    _install_module("rclpy.clock", {"Clock": Clock, "ClockType": ClockType})
     _install_module("sensor_msgs.msg", {"Imu": Imu})
     _install_module("std_msgs.msg", {"String": String})
     _install_module("unitree_api.msg", {"Request": Request, "Response": Response})

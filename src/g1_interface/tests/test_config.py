@@ -204,3 +204,41 @@ def test_with_asr_source_mode_returns_overridden_config():
     config = G1InterfaceConfig.default().with_asr_source_mode("custom")
 
     assert config.asr["source_mode"] == "custom"
+
+
+def test_default_watchdog_and_health_config():
+    config = G1InterfaceConfig.default()
+
+    assert config.project_topics["safety_state"] == "/g1/state/safety"
+    assert config.timeouts["motion_watchdog_period_ms"] == 50
+    assert config.timeouts["safety_heartbeat_timeout_ms"] == 1200
+    assert config.timeouts["mode_freshness_timeout_ms"] == 1500
+    assert config.timeouts["api_unhealthy_timeout_count"] == 3
+
+
+def test_watchdog_timeouts_must_be_positive(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+timeouts:
+  motion_watchdog_period_ms: 0
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="motion_watchdog_period_ms must be positive"):
+        G1InterfaceConfig.from_yaml(config_path)
+
+
+def test_api_unhealthy_timeout_count_must_be_integer(tmp_path: Path):
+    config_path = tmp_path / "g1_interface.yaml"
+    config_path.write_text(
+        """
+timeouts:
+  api_unhealthy_timeout_count: 2.5
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="api_unhealthy_timeout_count must be a positive integer"):
+        G1InterfaceConfig.from_yaml(config_path)
