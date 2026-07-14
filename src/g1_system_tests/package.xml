@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>g1_system_tests</name>
+  <version>0.1.0</version>
+  <description>Launch tests for the typed G1 agent control chain.</description>
+  <maintainer email="2450804878@qq.com">unitree_g1_agent</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_index_python</test_depend>
+  <test_depend>diagnostic_msgs</test_depend>
+  <test_depend>g1_agent_msgs</test_depend>
+  <test_depend>g1_interface</test_depend>
+  <test_depend>g1_sim</test_depend>
+  <test_depend>launch</test_depend>
+  <test_depend>launch_ros</test_depend>
+  <test_depend>launch_testing</test_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
+  <test_depend>launch_testing_ros</test_depend>
+  <test_depend>rclpy</test_depend>
+  <test_depend>safety_control</test_depend>
+  <test_depend>unitree_api</test_depend>
+  <test_depend>voice_bridge</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

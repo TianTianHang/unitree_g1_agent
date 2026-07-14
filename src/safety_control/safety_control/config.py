@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 DEFAULT_CONFIG: dict[str, Any] = {
     "safety": {
         "enabled": True,
@@ -97,7 +96,7 @@ def _require_bool(mapping: dict[str, Any], key: str) -> None:
 
 def _require_number(mapping: dict[str, Any], key: str, *, positive: bool = False) -> None:
     value = mapping.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{key} must be numeric")
     if positive and value <= 0:
         raise ValueError(f"{key} must be positive")
@@ -124,11 +123,11 @@ class SafetyControlConfig:
     topics: dict[str, dict[str, str]]
 
     @classmethod
-    def default(cls) -> "SafetyControlConfig":
+    def default(cls) -> SafetyControlConfig:
         return cls._from_dict(deepcopy(DEFAULT_CONFIG))
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "SafetyControlConfig":
+    def from_yaml(cls, path: str | Path) -> SafetyControlConfig:
         with Path(path).open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
         if not isinstance(loaded, dict):
@@ -136,7 +135,7 @@ class SafetyControlConfig:
         return cls._from_dict(_deep_merge(DEFAULT_CONFIG, loaded))
 
     @classmethod
-    def _from_dict(cls, raw: dict[str, Any]) -> "SafetyControlConfig":
+    def _from_dict(cls, raw: dict[str, Any]) -> SafetyControlConfig:
         config = cls(
             safety=dict(raw["safety"]),
             topics={

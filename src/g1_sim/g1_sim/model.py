@@ -16,7 +16,7 @@ def parse_mapping(raw: object) -> dict[str, Any]:
         return dict(raw)
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
-    if isinstance(raw, (list, tuple)) and all(isinstance(item, int) for item in raw):
+    if isinstance(raw, list | tuple) and all(isinstance(item, int) for item in raw):
         raw = bytes(raw).decode("utf-8")
     text = str(raw or "").strip()
     if not text:

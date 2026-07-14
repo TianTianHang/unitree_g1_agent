@@ -2,20 +2,18 @@
 
 ROS2 Python interface node for Unitree G1 P0 state bridging and high-level sport API commands.
 
-## Unit Tests
+## Development
 
 ```bash
-PYTHONPATH=src/g1_interface pytest src/g1_interface/tests -q
+make bootstrap
+make build
+make test
+make test-integration
 ```
 
-## Build
-
-```bash
-source /opt/ros/humble/setup.bash
-source <unitree_ros2_install>/setup.bash
-colcon build --symlink-install --packages-select g1_interface
-source install/setup.bash
-```
+The root Makefile creates the Python 3.10 uv environment and sources either
+`result/setup.bash` or the Unitree ROS workspace selected by
+`UNITREE_ROS2_WS`.
 
 ## Launch
 
@@ -37,9 +35,13 @@ ros2 topic echo /g1/state/imu
 Run this only after `/g1/state/health` reports fresh lowstate data and the robot is in a safe test posture.
 
 ```bash
-ros2 topic pub /g1/safe_cmd/stop std_msgs/msg/String "data: '{\"validation_result\":{\"allowed\":true},\"action\":\"stop\"}'" --once
+ros2 topic pub --once /voice/cmd/action g1_agent_msgs/msg/ActionIntent \
+  "{source: cli, session_id: smoke, command_id: cli-stop-1, text: '停止', action: stop, priority: emergency}"
 ros2 topic echo /api/sport/request
 ```
+
+This publishes an intent through `safety_control`; do not bypass the safety
+node by constructing a validated command manually.
 
 ## Motion Watchdog and Health Semantics
 

@@ -9,10 +9,11 @@ import subprocess
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from copy import deepcopy
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from voice_bridge.config import VoiceBridgeConfig
 from voice_bridge.internal_types import AgentCommand, AgentRequest, AgentResult
@@ -23,8 +24,7 @@ from voice_bridge.pi_config import (
     resolve_workspace,
     scrubbed_env,
 )
-from voice_bridge.pi_types import DEFAULT_PI_TIMEOUTS
-from voice_bridge.pi_types import CUSTOM_TOOLS
+from voice_bridge.pi_types import CUSTOM_TOOLS, DEFAULT_PI_TIMEOUTS
 
 
 class PiTransportError(RuntimeError):
@@ -267,7 +267,7 @@ def _build_agent_result(pending_tools: dict[str, dict[str, Any]], reply_text: st
     return AgentResult(commands=commands, reply_text=reply_text, led=led_params)
 
 
-def _finite_float(value: object) -> float | None:
+def _finite_float(value: Any) -> float | None:
     try:
         parsed = float(value)
     except (TypeError, ValueError):
@@ -282,14 +282,14 @@ def _validate_and_clamp_loco(params: dict[str, Any], config: VoiceBridgeConfig) 
     vy = _finite_float(params.get("vy", 0))
     vyaw = _finite_float(params.get("vyaw", 0))
     duration_sec = _finite_float(params.get("duration_sec", 0))
-    if None in {vx, vy, vyaw, duration_sec}:
+    if vx is None or vy is None or vyaw is None or duration_sec is None:
         return None
     defaults = config.motion_defaults
     return {
-        "vx": max(-float(defaults["default_vx"]), min(float(defaults["default_vx"]), float(vx))),
-        "vy": max(-float(defaults["default_vy"]), min(float(defaults["default_vy"]), float(vy))),
-        "vyaw": max(-float(defaults["default_vyaw"]), min(float(defaults["default_vyaw"]), float(vyaw))),
-        "duration_sec": max(0.1, min(float(defaults["max_motion_duration_sec"]), float(duration_sec))),
+        "vx": max(-float(defaults["default_vx"]), min(float(defaults["default_vx"]), vx)),
+        "vy": max(-float(defaults["default_vy"]), min(float(defaults["default_vy"]), vy)),
+        "vyaw": max(-float(defaults["default_vyaw"]), min(float(defaults["default_vyaw"]), vyaw)),
+        "duration_sec": max(0.1, min(float(defaults["max_motion_duration_sec"]), duration_sec)),
     }
 
 
@@ -303,13 +303,13 @@ def _validate_led(params: dict[str, Any]) -> dict[str, Any] | None:
     g = _finite_float(params.get("g", 0))
     b = _finite_float(params.get("b", 0))
     ttl_sec = _finite_float(params.get("ttl_sec", 1.0))
-    if None in {r, g, b, ttl_sec}:
+    if r is None or g is None or b is None or ttl_sec is None:
         return None
     return {
-        "r": max(0, min(255, int(float(r)))),
-        "g": max(0, min(255, int(float(g)))),
-        "b": max(0, min(255, int(float(b)))),
-        "ttl_sec": max(0.1, min(30.0, float(ttl_sec))),
+        "r": max(0, min(255, int(r))),
+        "g": max(0, min(255, int(g))),
+        "b": max(0, min(255, int(b))),
+        "ttl_sec": max(0.1, min(30.0, ttl_sec)),
     }
 
 

@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 DDS_TOPIC_PREFIXES = ("rt/", "/rt/")
 
 
@@ -106,7 +105,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def _require_positive_number(mapping: dict[str, Any], key: str) -> None:
     value = mapping.get(key)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
         raise ValueError(f"{key} must be a positive number")
 
 
@@ -120,11 +119,11 @@ class G1SimConfig:
     sim: dict[str, Any]
 
     @classmethod
-    def default(cls) -> "G1SimConfig":
+    def default(cls) -> G1SimConfig:
         return cls._from_dict(deepcopy(DEFAULT_CONFIG))
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "G1SimConfig":
+    def from_yaml(cls, path: str | Path) -> G1SimConfig:
         with Path(path).open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
         if not isinstance(loaded, dict):
@@ -132,7 +131,7 @@ class G1SimConfig:
         return cls._from_dict(_deep_merge(DEFAULT_CONFIG, loaded))
 
     @classmethod
-    def _from_dict(cls, raw: dict[str, Any]) -> "G1SimConfig":
+    def _from_dict(cls, raw: dict[str, Any]) -> G1SimConfig:
         config = cls(topics=dict(raw["topics"]), sim=dict(raw["sim"]))
         config.validate()
         return config

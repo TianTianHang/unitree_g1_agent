@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import Callable
+from collections.abc import Callable
+from typing import Any
 
 from g1_interface.internal_types import PendingApiRequest, SportCommand
 
@@ -9,7 +10,7 @@ from g1_interface.internal_types import PendingApiRequest, SportCommand
 class SportApiClient:
     def __init__(
         self,
-        request_cls: Callable[[], object],
+        request_cls: Callable[[], Any],
         api_ids: dict[str, int],
         response_timeout_sec: float,
     ) -> None:
@@ -23,7 +24,7 @@ class SportApiClient:
     def pending_count(self) -> int:
         return len(self._pending)
 
-    def build_request(self, command: SportCommand, now_sec: float) -> object:
+    def build_request(self, command: SportCommand, now_sec: float) -> Any:
         api_id = self._api_ids.get(command.action)
         if api_id is None:
             raise ValueError(f"unsupported sport action: {command.action}")
@@ -87,7 +88,7 @@ def decode_response_payload(msg: object) -> dict[str, object]:
             continue
         if isinstance(value, bytes):
             value = value.decode("utf-8")
-        if isinstance(value, (list, tuple)) and all(isinstance(item, int) for item in value):
+        if isinstance(value, list | tuple) and all(isinstance(item, int) for item in value):
             value = bytes(value).decode("utf-8")
         payload = json.loads(str(value))
         if not isinstance(payload, dict):

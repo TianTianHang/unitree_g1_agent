@@ -155,7 +155,7 @@ class DebugBridgeNode:
             msg = self.msg["VoiceEvent"](
                 stamp=self.node.get_clock().now().to_msg(),
                 source=str(request.get("source", self.config.defaults["asr_source"])),
-                event_type=self.msg["VoiceEvent"].EVENT_ASR,
+                event_type=str(getattr(self.msg["VoiceEvent"], "EVENT_ASR")),
                 text=str(request.get("text", "")),
                 is_final=bool(request.get("is_final", self.config.defaults["asr_is_final"])),
                 language=str(request.get("language", "")),
@@ -194,7 +194,8 @@ class DebugBridgeNode:
             return
         event = str(data.get("event", "unknown"))
         session_id = data.get("session_id") if isinstance(data.get("session_id"), str) else None
-        event_data = data.get("data") if isinstance(data.get("data"), dict) else {}
+        raw_event_data = data.get("data")
+        event_data: dict[str, Any] = raw_event_data if isinstance(raw_event_data, dict) else {}
         timestamp = float(data.get("timestamp", self._now_sec()))
         self.state.push_event("voice_debug", event, event_data, session_id=session_id, timestamp=timestamp)
         if event == "agent_started":

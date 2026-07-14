@@ -40,7 +40,13 @@ def test_build_prompt_text_includes_robot_context():
 def test_build_agent_result_keeps_confirmed_motion_order_and_led_separate():
     result = _build_agent_result(
         {
-            "b": {"order": 1, "tool_name": "robot_stop", "kind": "action", "params": {"action": "stand"}, "confirmed": True},
+            "b": {
+                "order": 1,
+                "tool_name": "robot_stop",
+                "kind": "action",
+                "params": {"action": "stand"},
+                "confirmed": True,
+            },
             "a": {
                 "order": 0,
                 "tool_name": "robot_walk",
@@ -200,7 +206,13 @@ def test_decide_sends_prompt_and_returns_confirmed_tools():
                 "toolName": "robot_walk",
                 "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
             },
-            {"type": "tool_execution_end", "toolCallId": "w1", "toolName": "robot_walk", "result": {}, "isError": False},
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "w1",
+                "toolName": "robot_walk",
+                "result": {},
+                "isError": False,
+            },
             {"type": "agent_end", "messages": [{"role": "assistant", "content": [{"type": "text", "text": "收到"}]}]},
         ]
     )
@@ -213,7 +225,12 @@ def test_decide_sends_prompt_and_returns_confirmed_tools():
     assert fake.sent[-1]["type"] == "prompt"
     assert "text" not in fake.sent[-1]
     assert "User said: 向前走然后停下" in fake.sent[-1]["message"]
-    assert result.commands == [AgentCommand(kind="loco", params={"vx": 0.1, "vy": 0.0, "vyaw": 0.0, "duration_sec": 1.0})]
+    assert result.commands == [
+        AgentCommand(
+            kind="loco",
+            params={"vx": 0.1, "vy": 0.0, "vyaw": 0.0, "duration_sec": 1.0},
+        )
+    ]
     assert result.reply_text == "收到"
 
 
@@ -226,7 +243,13 @@ def test_decide_returns_no_motion_when_agent_end_missing():
                 "toolName": "robot_walk",
                 "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
             },
-            {"type": "tool_execution_end", "toolCallId": "w1", "toolName": "robot_walk", "result": {}, "isError": False},
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "w1",
+                "toolName": "robot_walk",
+                "result": {},
+                "isError": False,
+            },
         ]
     )
     client = make_client(
@@ -259,15 +282,36 @@ def test_decide_returns_empty_after_conversational_turn_timeout():
 def test_decide_waits_for_final_agent_end_after_auto_retry():
     fake = FakeTransport(
         [
-            {"type": "agent_end", "messages": [{"role": "assistant", "content": [], "stopReason": "error"}], "willRetry": True},
+            {
+                "type": "agent_end",
+                "messages": [
+                    {"role": "assistant", "content": [], "stopReason": "error"}
+                ],
+                "willRetry": True,
+            },
             {
                 "type": "tool_execution_start",
                 "toolCallId": "say1",
                 "toolName": "robot_say",
                 "args": {"text": "第二轮收到"},
             },
-            {"type": "tool_execution_end", "toolCallId": "say1", "toolName": "robot_say", "result": {}, "isError": False},
-            {"type": "agent_end", "messages": [{"role": "assistant", "content": [{"type": "text", "text": "好的"}]}], "willRetry": False},
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "say1",
+                "toolName": "robot_say",
+                "result": {},
+                "isError": False,
+            },
+            {
+                "type": "agent_end",
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "好的"}],
+                    }
+                ],
+                "willRetry": False,
+            },
         ]
     )
     client = make_client(fake)
@@ -337,7 +381,13 @@ def test_abort_wakes_decide_and_returns_no_motion():
                 "toolName": "robot_walk",
                 "args": {"vx": 0.1, "vy": 0, "vyaw": 0, "duration_sec": 1},
             },
-            {"type": "tool_execution_end", "toolCallId": "w1", "toolName": "robot_walk", "result": {}, "isError": False},
+            {
+                "type": "tool_execution_end",
+                "toolCallId": "w1",
+                "toolName": "robot_walk",
+                "result": {},
+                "isError": False,
+            },
         ]
     )
     client = make_client(

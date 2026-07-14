@@ -124,7 +124,7 @@ class AsrNode:
         """Processing thread: VAD + SpeechBuffer state machine."""
         while True:
             pcm_bytes = self._pcm_queue.get()
-            if pcm_bytes is _STOP_SENTINEL:
+            if pcm_bytes is None:
                 segment = self._buffer.force_complete()
                 if segment:
                     try:
@@ -163,7 +163,7 @@ class AsrNode:
         """ASR worker thread: transcribe speech segments and publish results."""
         while True:
             segment = self._segment_queue.get()
-            if segment is _STOP_SENTINEL:
+            if segment is None:
                 return
             self._transcribe_and_publish(segment)
 
@@ -191,7 +191,7 @@ class AsrNode:
         msg = self.msg["VoiceEvent"]()
         msg.stamp = self.node.get_clock().now().to_msg()
         msg.source = str(self.config.output["source"])
-        msg.event_type = msg.EVENT_ASR
+        msg.event_type = str(getattr(self.msg["VoiceEvent"], "EVENT_ASR"))
         msg.has_sequence_id = True
         msg.sequence_id = sequence_id
         msg.text = text

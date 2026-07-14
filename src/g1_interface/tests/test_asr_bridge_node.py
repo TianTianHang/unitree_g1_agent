@@ -475,6 +475,10 @@ def test_main_shuts_down_bridge_before_destroying_node(monkeypatch):
             events.append("destroy_node")
 
     runtime_node = RuntimeNode()
+    no_signal_handlers = object()
+
+    class SignalHandlerOptions:
+        NO = no_signal_handlers
 
     class Bridge:
         def __init__(self, node, config):
@@ -484,7 +488,13 @@ def test_main_shuts_down_bridge_before_destroying_node(monkeypatch):
             events.append("bridge_shutdown")
 
     monkeypatch.setattr(node_module, "G1InterfaceNode", Bridge)
-    monkeypatch.setattr(rclpy, "init", lambda args=None: events.append("rclpy_init"), raising=False)
+    monkeypatch.setattr(rclpy, "SignalHandlerOptions", SignalHandlerOptions, raising=False)
+    monkeypatch.setattr(
+        rclpy,
+        "init",
+        lambda args=None, signal_handler_options=None: events.append(("rclpy_init", signal_handler_options)),
+        raising=False,
+    )
     monkeypatch.setattr(rclpy, "create_node", lambda name: runtime_node, raising=False)
     monkeypatch.setattr(rclpy, "spin", lambda node: (_ for _ in ()).throw(KeyboardInterrupt()), raising=False)
     monkeypatch.setattr(rclpy, "ok", lambda: True, raising=False)
@@ -492,4 +502,9 @@ def test_main_shuts_down_bridge_before_destroying_node(monkeypatch):
 
     node_module.main()
 
-    assert events == ["rclpy_init", "bridge_shutdown", "destroy_node", "rclpy_shutdown"]
+    assert events == [
+        ("rclpy_init", no_signal_handlers),
+        "bridge_shutdown",
+        "destroy_node",
+        "rclpy_shutdown",
+    ]

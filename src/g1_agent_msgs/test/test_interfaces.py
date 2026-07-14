@@ -1,4 +1,5 @@
 from builtin_interfaces.msg import Duration, Time
+
 from g1_agent_msgs.msg import (
     ActionIntent,
     LocoIntent,

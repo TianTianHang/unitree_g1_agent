@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from g1_sim.config import G1SimConfig
 from g1_sim.model import (
     SimulatedRobotState,
     decode_request_parameter,
     dumps,
-    handle_arm_api,
     handle_agv_api,
+    handle_arm_api,
     handle_motion_switcher_api,
     handle_sport_api,
     handle_voice_api,

@@ -20,7 +20,11 @@ class QuickAsrRequest(BaseModel):
 def _asr_payload(server: Any, request: AsrPublishRequest) -> dict[str, Any]:
     return {
         "text": request.text.strip(),
-        "confidence": float(request.confidence if request.confidence is not None else server.config.defaults["asr_confidence"]),
+        "confidence": float(
+            request.confidence
+            if request.confidence is not None
+            else server.config.defaults["asr_confidence"]
+        ),
         "is_final": bool(request.is_final if request.is_final is not None else server.config.defaults["asr_is_final"]),
         "source": str(request.source or server.config.defaults["asr_source"]),
     }

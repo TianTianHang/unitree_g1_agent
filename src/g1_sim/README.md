@@ -77,17 +77,14 @@ Examples:
 ## Unit Tests
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/g1_sim .venv/bin/python -m pytest src/g1_sim/tests -q
+make bootstrap
+make build
+make test
+make test-integration
 ```
 
-## Build
-
-```bash
-source /opt/ros/humble/setup.bash
-source <unitree_ros2_install>/setup.bash
-colcon build --symlink-install --packages-select g1_sim
-source install/setup.bash
-```
+The integration target launches the typed control chain through `g1_sim` and
+verifies both motion and stop requests.
 
 ## Launch
 

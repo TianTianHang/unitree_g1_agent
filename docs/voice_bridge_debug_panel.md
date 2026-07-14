@@ -15,8 +15,7 @@
 在仓库根目录执行：
 
 ```bash
-source /opt/ros/humble/setup.bash
-colcon build --packages-select voice_bridge voice_bridge_debug
+make build
 source install/setup.bash
 ros2 run voice_bridge_debug debug_panel_server -- --prod
 ```
@@ -58,7 +57,7 @@ ros2 run voice_bridge_debug debug_panel_server
 
 ```bash
 cd src/voice_bridge_debug/frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -78,27 +77,20 @@ Vite 已配置代理：
 修改前端后，如果要更新生产模式静态资源：
 
 ```bash
-cd src/voice_bridge_debug/frontend
-npm install
-npm run build
-
-cd /home/ubuntu/Desktop/unitree_g1_agent
-rm -rf src/voice_bridge_debug/voice_bridge_debug/frontend_dist
-mkdir -p src/voice_bridge_debug/voice_bridge_debug/frontend_dist
-cp -R src/voice_bridge_debug/frontend/dist/. \
-  src/voice_bridge_debug/voice_bridge_debug/frontend_dist/
-
-source /opt/ros/humble/setup.bash
-colcon build --packages-select voice_bridge_debug
-source install/setup.bash
+make frontend
+make build
 ```
+
+Vite 已直接把产物写入 Python 包的 `frontend_dist`。`make frontend` 会用
+`npm ci` 重建，并检查已提交产物是否与源码一致；有意修改 UI 时先审查并
+暂存生成文件，再重新运行该命令。
 
 ## 使用面板
 
 1. 在 ASR 输入面板填写文本，例如 `小宇向前`。
 2. 保持 `confidence` 在 `0.0` 到 `1.0` 之间。
 3. 点击 `发送 ASR`。
-4. 面板会把 JSON ASR 消息发布到 `/g1/audio/asr`。
+4. 面板会把强类型 `g1_agent_msgs/msg/VoiceEvent` 发布到 `/g1/audio/asr`。
 5. 如果 `voice_bridge` 正在运行，时间线会显示 `/voice/debug/events`、命令发布、安全决策和状态更新。
 
 调试面板不会直接发布运动命令；它只向 `/g1/audio/asr` 发布模拟 ASR。后续是否产生 `/voice/cmd/*` 或 `/g1/safe_cmd/*`，由 `voice_bridge`、agent 和 safety 节点决定。
@@ -135,5 +127,5 @@ ros2 run voice_bridge_debug debug_panel_server -- \
 - 页面打不开：确认 `ros2 run voice_bridge_debug debug_panel_server -- --prod` 仍在运行，并检查端口是否是 `8765`。
 - 页面有但无事件：确认 `voice_bridge` 已启动，并检查 `/voice/debug/events` 是否有消息。
 - ASR 没有效果：确认 `/g1/audio/asr` topic 与 `voice_bridge` 配置一致。
-- `--prod` 报 `frontend static directory not found`：先执行前端 `npm run build`，再把 `dist/` 复制到 `voice_bridge_debug/frontend_dist` 并重新 `colcon build`。
+- `--prod` 报 `frontend static directory not found`：在仓库根目录执行 `make frontend` 和 `make build`。
 - 绑定 `0.0.0.0` 失败：配置里必须设置 `server.allow_remote: true`。

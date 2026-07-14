@@ -598,7 +598,8 @@ class G1InterfaceNode:
         ):
             self._publish_stop_request("safety_heartbeat_lost", now_sec)
             return
-        if now_sec >= float(self.motion_deadline_monotonic_sec):
+        motion_deadline = self.motion_deadline_monotonic_sec
+        if motion_deadline is not None and now_sec >= motion_deadline:
             self._publish_stop_request("command_deadline", now_sec)
 
     def publish_health(self):
@@ -647,7 +648,7 @@ def main(args=None):
 
     from g1_interface.config import G1InterfaceConfig
 
-    rclpy.init(args=args)
+    rclpy.init(args=args, signal_handler_options=rclpy.SignalHandlerOptions.NO)
     node = rclpy.create_node("g1_interface_node")
     node.declare_parameter("config_path", "")
     config_path = node.get_parameter("config_path").get_parameter_value().string_value

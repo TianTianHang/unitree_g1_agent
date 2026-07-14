@@ -1,7 +1,9 @@
 """Silero VAD wrapper - voice activity detection on PCM audio chunks."""
 from __future__ import annotations
 
-_model = None
+from typing import Any
+
+_model: Any | None = None
 _utils = None
 
 
@@ -53,6 +55,9 @@ class SileroVAD:
         import torch
 
         audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        model = _model
+        if model is None:
+            raise RuntimeError("Silero VAD model is not loaded")
         window = self._window_size_samples()
         if audio.size == 0:
             return False
@@ -63,6 +68,6 @@ class SileroVAD:
             if chunk.size < window:
                 chunk = np.pad(chunk, (0, window - chunk.size))
             tensor = torch.from_numpy(chunk)
-            probabilities.append(float(_model(tensor, self.sample_rate).item()))
+            probabilities.append(float(model(tensor, self.sample_rate).item()))
 
         return max(probabilities, default=0.0) > self.threshold

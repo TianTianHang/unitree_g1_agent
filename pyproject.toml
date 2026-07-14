@@ -46,6 +46,14 @@ select = ["E", "F", "I", "UP"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
+extraPaths = [
+  "src/asr_node",
+  "src/g1_interface",
+  "src/safety_control",
+  "src/voice_bridge",
+  "src/voice_bridge_debug",
+  "build/g1_agent_msgs/rosidl_generator_py",
+]
 include = [
   "src/asr_node/asr_node",
   "src/g1_interface/g1_interface",

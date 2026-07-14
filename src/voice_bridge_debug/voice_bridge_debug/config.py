@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 DEFAULT_CONFIG: dict[str, Any] = {
     "server": {"host": "127.0.0.1", "port": 8765, "allow_remote": False},
     "topics": {
@@ -54,11 +53,11 @@ class DebugPanelConfig:
     asr_default_text: str
 
     @classmethod
-    def default(cls) -> "DebugPanelConfig":
+    def default(cls) -> DebugPanelConfig:
         return cls.from_dict(deepcopy(DEFAULT_CONFIG))
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "DebugPanelConfig":
+    def from_yaml(cls, path: str | Path) -> DebugPanelConfig:
         with Path(path).open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
         if not isinstance(loaded, dict):
@@ -66,7 +65,7 @@ class DebugPanelConfig:
         return cls.from_dict(_deep_merge(DEFAULT_CONFIG, loaded))
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "DebugPanelConfig":
+    def from_dict(cls, raw: dict[str, Any]) -> DebugPanelConfig:
         config = cls(
             server=dict(raw["server"]),
             topics=dict(raw["topics"]),
@@ -121,7 +120,7 @@ class DebugPanelConfig:
         confidence = self.defaults.get("asr_confidence")
         if (
             isinstance(confidence, bool)
-            or not isinstance(confidence, (int, float))
+            or not isinstance(confidence, int | float)
             or not 0.0 <= float(confidence) <= 1.0
         ):
             raise ValueError("defaults.asr_confidence must be between 0 and 1")

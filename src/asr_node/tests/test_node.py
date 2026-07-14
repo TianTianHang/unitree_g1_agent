@@ -4,11 +4,10 @@ import threading
 from unittest.mock import MagicMock
 
 from builtin_interfaces.msg import Time
-from g1_agent_msgs.msg import VoiceEvent
 
 from asr_node.config import AsrNodeConfig
-
-from asr_node.node import AsrNode, _STOP_SENTINEL
+from asr_node.node import _STOP_SENTINEL, AsrNode
+from g1_agent_msgs.msg import VoiceEvent
 
 
 def _make_config(**overrides) -> AsrNodeConfig:

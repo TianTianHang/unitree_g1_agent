@@ -4,37 +4,23 @@ ROS2 Python node that bridges ASR text and Pi Agent decisions into project-inter
 
 P0 safety boundary: this node publishes motion intent only to `/voice/cmd/*`. It does not publish `/api/*`, `/lowcmd`, `/arm_sdk`, `/dex3/*/cmd`, or `/g1/safe_cmd/*`.
 
-## Unit Tests
-
-```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/voice_bridge .venv/bin/python -m pytest src/voice_bridge/tests -q
-```
-
 ## Pi RPC Agent Backend
 
 Set `agent.backend: pi_rpc` to run Pi Agent as a JSONL RPC subprocess. The default workspace is `.agent-runtime/.unitree_agent`; `.agent-runtime` is runtime/cache space only. The project-owned robot tools extension lives at `src/voice_bridge/pi_extensions/robot-tools.ts` and is loaded through `agent.pi.extensions`.
 
 Pi is not sandboxed by `voice_bridge`. It may use Pi built-in tools such as bash/read/write under the current user. The ROS motion safety boundary remains in Python: only confirmed `robot_*` tool calls are mapped to `AgentCommand`s, and `voice_bridge` validates/clamps motion, action, LED, and TTS payloads before publishing.
 
-Run unit tests:
+Use the workspace-level Python 3.10 uv environment and test entry points:
 
 ```bash
-PYTHONPATH=src/voice_bridge pytest src/voice_bridge/tests -q
+make bootstrap
+make build
+make test
+make test-integration
 ```
 
-Run real Pi smoke tests:
-
-```bash
-PI_AGENT_INTEGRATION=1 PYTHONPATH=src/voice_bridge pytest src/voice_bridge/tests/test_pi_integration.py -q
-```
-
-## Build
-
-```bash
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select voice_bridge
-source install/setup.bash
-```
+Real Pi RPC smoke tests are opt-in and are not run by normal CI because they
+execute the locally installed Pi process.
 
 ## Launch
 
@@ -50,9 +36,9 @@ ros2 topic echo /voice/cmd/loco
 ros2 topic echo /voice/cmd/action
 ros2 topic echo /g1/cmd/audio/tts
 
-ros2 topic pub /g1/audio/asr std_msgs/msg/String \
-  '{data: "{\"text\":\"宇树，向前走一秒\",\"confidence\":0.9,\"is_final\":true}"}' --once
+ros2 topic pub --once /g1/audio/asr g1_agent_msgs/msg/VoiceEvent \
+  "{source: debug_cli, event_type: asr, text: '宇树，向前走一秒', has_confidence: true, confidence: 0.9, is_final: true, language: zh}"
 
-ros2 topic pub /g1/audio/asr std_msgs/msg/String \
-  '{data: "停止"}' --once
+ros2 topic pub --once /g1/audio/asr g1_agent_msgs/msg/VoiceEvent \
+  "{source: debug_cli, event_type: asr, text: '停止', is_final: true, language: zh}"
 ```

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Protocol, TypeGuard
 
 from voice_bridge.agent import AgentClient, build_agent_client
 from voice_bridge.config import VoiceBridgeConfig
@@ -19,13 +19,21 @@ def _json(data: dict[str, Any]) -> str:
 def diagnostic_level_to_int(level: Any) -> int | None:
     if level is None:
         return None
-    if isinstance(level, (bytes, bytearray, memoryview)):
+    if isinstance(level, bytes | bytearray | memoryview):
         raw = bytes(level)
         return raw[0] if raw else None
     return int(level)
 
 
-def _supports_closeable(agent: object) -> bool:
+class CloseableAgent(Protocol):
+    def abort(self) -> None:
+        ...
+
+    def close(self) -> None:
+        ...
+
+
+def _supports_closeable(agent: object) -> TypeGuard[CloseableAgent]:
     return hasattr(agent, "abort") and hasattr(agent, "close")
 
 
@@ -450,7 +458,12 @@ class VoiceBridgeNode:
                 if text:
                     payload = build_tts_payload(text, request.session_id)
                     self._publish_string(self.tts_pub, payload)
-                    self._publish_command_debug_event(self.config.topics["tts"], request.session_id, payload, publish_sec)
+                    self._publish_command_debug_event(
+                        self.config.topics["tts"],
+                        request.session_id,
+                        payload,
+                        publish_sec,
+                    )
             elif command.kind == "led":
                 payload = build_led_payload(command.params)
                 self._publish_string(self.led_pub, payload)

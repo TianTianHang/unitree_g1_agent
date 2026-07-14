@@ -34,7 +34,10 @@ class DebugBridgeServer:
         self.web_broadcast_queue: asyncio.Queue | None = None
         self.asr_publish_queue: queue.Queue = queue.Queue()
         self.ws_manager = WebSocketManager()
-        self.state = PanelState(max_events=int(config.timeline["max_events"]), notify_web=self.notify_web_from_ros_thread)
+        self.state = PanelState(
+            max_events=int(config.timeline["max_events"]),
+            notify_web=self.notify_web_from_ros_thread,
+        )
         self.node = rclpy.create_node("voice_bridge_debug_node")
         self.ros_node = DebugBridgeNode(
             self.node,

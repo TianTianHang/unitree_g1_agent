@@ -68,7 +68,7 @@ def _install_fake_ros_modules():
 
 _install_fake_ros_modules()
 
-from g1_sim.node import G1SimNode
+from g1_sim.node import G1SimNode  # noqa: E402
 
 
 def _make_node():

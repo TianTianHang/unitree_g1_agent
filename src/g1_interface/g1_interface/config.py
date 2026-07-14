@@ -7,7 +7,6 @@ from typing import Any
 
 import yaml
 
-
 DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
     "robot": {
         "model": "g1",
@@ -94,11 +93,11 @@ class G1InterfaceConfig:
     asr: dict[str, Any]
 
     @classmethod
-    def default(cls) -> "G1InterfaceConfig":
+    def default(cls) -> G1InterfaceConfig:
         return cls._from_dict(deepcopy(DEFAULT_CONFIG))
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "G1InterfaceConfig":
+    def from_yaml(cls, path: str | Path) -> G1InterfaceConfig:
         with Path(path).open("r", encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle) or {}
         if not isinstance(loaded, dict):
@@ -106,7 +105,7 @@ class G1InterfaceConfig:
         return cls._from_dict(_deep_merge(DEFAULT_CONFIG, loaded))
 
     @classmethod
-    def _from_dict(cls, raw: dict[str, Any]) -> "G1InterfaceConfig":
+    def _from_dict(cls, raw: dict[str, Any]) -> G1InterfaceConfig:
         config = cls(
             robot=dict(raw["robot"]),
             native_topics=dict(raw["native_topics"]),
@@ -119,7 +118,7 @@ class G1InterfaceConfig:
         config.validate()
         return config
 
-    def with_asr_source_mode(self, source_mode: str) -> "G1InterfaceConfig":
+    def with_asr_source_mode(self, source_mode: str) -> G1InterfaceConfig:
         raw = {
             "robot": self.robot,
             "native_topics": self.native_topics,
@@ -164,7 +163,7 @@ class G1InterfaceConfig:
         missing_timeouts = []
         for key in required_timeouts:
             value = self.timeouts.get(key)
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not isinstance(value, int | float):
                 missing_timeouts.append(key)
         if missing_timeouts:
             raise ValueError(f"missing timeout config: {', '.join(missing_timeouts)}")

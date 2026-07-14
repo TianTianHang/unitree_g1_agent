@@ -4,7 +4,7 @@ import tempfile
 
 import pytest
 
-from asr_node.config import AsrNodeConfig, DEFAULT_CONFIG
+from asr_node.config import DEFAULT_CONFIG, AsrNodeConfig
 
 
 def test_default_config_has_required_sections():

@@ -1,226 +1,174 @@
 # G1 Agent 数据契约
 
-本文固定当前三个 P0 节点之间的 JSON 数据结构。开发阶段不保留旧结构兼容性；代码和测试以本文为准。
+本文是当前项目内部核心控制链的契约真相。核心 topic 使用
+`g1_agent_msgs` 的强类型 ROS 2 消息，不携带 JSON，也不使用
+`schema_version` 字段。WebSocket、HTTP/Pi RPC、调试日志和 Unitree 官方
+字符串载荷仍可在明确边界使用 JSON。
 
-## 总体流向
+## 核心流向
 
 ```text
-g1_interface
-  subscribes /audio_msg
-  publishes /g1/audio/asr, /g1/audio/event, /g1/state/low, /g1/state/mode, /g1/state/health
-
-voice_bridge
-  subscribes /g1/state/mode, /g1/state/safety, /g1/state/health
-  publishes /voice/cmd/loco, /voice/cmd/action
-
-safety_control
-  subscribes /voice/cmd/loco, /voice/cmd/action, /g1/state/low, /g1/state/mode, /g1/state/health
-  publishes /g1/safe_cmd/loco, /g1/safe_cmd/stop, /g1/safety/decisions, /g1/state/safety
-
-g1_interface
-  subscribes /g1/safe_cmd/loco, /g1/safe_cmd/stop
-  publishes /api/sport/request
+/audio_msg ──native JSON──> g1_interface ──VoiceEvent──┐
+                                                       ├─> voice_bridge
+asr_node ───────────────────────────────VoiceEvent─────┘
+  └─> LocoIntent / ActionIntent
+        └─> safety_control
+              └─> ValidatedLocoCommand / ValidatedActionCommand
+                    └─> g1_interface ──Unitree Request.parameter JSON──> Sport API
 ```
 
-## g1_interface 发布结构
+## Topic 类型表
 
-### `/g1/state/low`
+| Topic | ROS 类型 | Producer | Consumer |
+| --- | --- | --- | --- |
+| `/g1/audio/asr` | `g1_agent_msgs/msg/VoiceEvent` | `asr_node` 或 `g1_interface` | `voice_bridge`、调试面板 |
+| `/g1/audio/event` | `g1_agent_msgs/msg/VoiceEvent` | `g1_interface` | rosbag 或外部状态监听器 |
+| `/voice/cmd/loco` | `g1_agent_msgs/msg/LocoIntent` | `voice_bridge` | `safety_control`、调试面板 |
+| `/voice/cmd/action` | `g1_agent_msgs/msg/ActionIntent` | `voice_bridge` | `safety_control`、调试面板 |
+| `/g1/state/low` | `g1_agent_msgs/msg/RobotStateSummary` | `g1_interface` | `safety_control` |
+| `/g1/state/mode` | `g1_agent_msgs/msg/RobotStateSummary` | `g1_interface` | `safety_control`、`voice_bridge`、调试面板 |
+| `/g1/safe_cmd/loco` | `g1_agent_msgs/msg/ValidatedLocoCommand` | `safety_control` | `g1_interface`、调试面板 |
+| `/g1/safe_cmd/stop` | `g1_agent_msgs/msg/ValidatedActionCommand` | `safety_control` | `g1_interface`、调试面板 |
+| `/g1/safety/decisions` | `g1_agent_msgs/msg/SafetyDecision` | `safety_control` | 调试面板、审计工具 |
+| `/g1/state/safety` | `g1_agent_msgs/msg/SafetyStatus` | `safety_control` | `g1_interface`、`voice_bridge`、调试面板 |
+| `/g1/state/health` | `diagnostic_msgs/msg/DiagnosticArray` | `g1_interface` | `safety_control`、`voice_bridge`、调试面板 |
 
-`std_msgs/msg/String`，JSON：
+所有 producer 与 consumer 必须使用同一个生成消息类；禁止在表中 topic 上
+重新引入 `String` 包装层。
 
-```json
-{
-  "schema_version": "g1_state.v1",
-  "source": "lowstate",
-  "stamp_sec": 10.0,
-  "mode": "sport_api_loco",
-  "control_owner": "internal",
-  "mode_source": "sport_api.get_fsm_mode",
-  "sport_fsm_mode": 2,
-  "sport_fsm_id": 0,
-  "rpy": [0.0, 0.0, 0.0],
-  "quaternion": [1.0, 0.0, 0.0, 0.0],
-  "gyroscope": [0.0, 0.0, 0.0],
-  "accelerometer": [0.0, 0.0, 9.8],
-  "motor_count": 35,
-  "max_temperature_c": 42.0,
-  "battery_voltage": null,
-  "velocity": {"vx": 0.0, "vy": 0.0, "vyaw": 0.0},
-  "velocity_source": "last_sport_command"
-}
-```
+## 八个消息类型
 
-### `/g1/state/mode`
+### `VoiceEvent.msg`
 
-`std_msgs/msg/String`，JSON：
+常量：
 
-```json
-{
-  "schema_version": "g1_state.v1",
-  "source": "lf/lowstate",
-  "stamp_sec": 10.0,
-  "mode": "sport_api_loco",
-  "control_owner": "internal",
-  "mode_source": "sport_api.get_fsm_mode",
-  "sport_fsm_mode": 2,
-  "sport_fsm_id": 0,
-  "motor_count": 35
-}
-```
+- `EVENT_ASR="asr"`
+- `EVENT_PLAYBACK="playback"`
+- `PLAYBACK_STOPPED=0`
+- `PLAYBACK_PLAYING=1`
 
-### `/g1/state/health`
+字段：
 
-`diagnostic_msgs/msg/DiagnosticArray`。`g1_interface` 必须在 diagnostic key/value 中发布：
+| 字段 | 含义 |
+| --- | --- |
+| `stamp` | ROS 消息时间戳 |
+| `source` | `custom_asr`、`builtin_asr`、`builtin_audio` 或调试来源 |
+| `event_type` | `EVENT_ASR` 或 `EVENT_PLAYBACK` |
+| `has_sequence_id`, `sequence_id` | 是否存在来源序列号及其值 |
+| `text` | ASR 文本；播放事件可为空 |
+| `has_confidence`, `confidence` | 是否存在置信度；存在时范围为 0.0–1.0 |
+| `is_final` | ASR 是否为最终结果 |
+| `language` | BCP-47 风格语言标识；未知可为空 |
+| `has_playback_state`, `playback_state` | 是否存在播放状态及其枚举值 |
 
-- `state`: `"ok" | "degraded" | "unhealthy"`
-- `lowstate_age_ms`: `int | null`
-- `pending_api_count`: `int`
-- `last_api_result`: `object | null`
+`has_*` 为 `false` 时，对应值字段必须被 consumer 视为未提供，而不是默认值。
 
-### `/g1/audio/asr`
+### `LocoIntent.msg`
 
-`std_msgs/msg/String`。`g1_interface` 从 native `/audio_msg` 转发 ASR 文本事件到该项目内部 topic。
+| 字段 | 含义与单位 |
+| --- | --- |
+| `created_at` | intent 的 ROS 创建时间戳 |
+| `source` | intent producer，例如 `voice_bridge` |
+| `session_id` | 会话关联标识 |
+| `command_id` | 非空的关联与审计标识；可供上层实现幂等检查 |
+| `text` | 触发该 intent 的原始文本 |
+| `vx` | 前后线速度，m/s |
+| `vy` | 横向线速度，m/s |
+| `vyaw` | 偏航角速度，rad/s |
+| `duration` | 运动持续时间，ROS `Duration`，单位秒/纳秒 |
 
-ASR source selection is controlled by `g1_interface` config `asr.source_mode`:
+### `ActionIntent.msg`
 
-- `builtin`: forward ASR-shaped native `/audio_msg` messages to `/g1/audio/asr`; do not start `asr_node`.
-- `custom`: drop ASR-shaped native `/audio_msg` messages; start `asr_node`, which publishes `/g1/audio/asr` directly.
-- `both`: forward native ASR and allow custom ASR concurrently; downstream consumers may receive duplicate semantic commands and this mode is for diagnostics only.
+常量：`ACTION_STOP="stop"`、`ACTION_CANCEL="cancel"`、
+`PRIORITY_NORMAL="normal"`、`PRIORITY_EMERGENCY="emergency"`。
 
-Recommended runtime commands:
+字段 `created_at`、`source`、`session_id`、`command_id`、`text` 与
+`LocoIntent` 同义；`action` 必须是 stop 或 cancel，`priority` 必须是
+normal 或 emergency。stop/cancel 是安全动作，不是普通运动指令。
 
-```bash
-ros2 launch g1_interface g1_interface.launch.py asr_source_mode:=builtin
-ros2 launch g1_interface g1_interface.launch.py asr_source_mode:=custom
-ros2 launch asr_node asr_node.launch.py
-```
+### `RobotStateSummary.msg`
 
-允许两种输入形态：
+模式常量：`MODE_UNKNOWN`、`MODE_SPORT_API_LOCO`、`MODE_USER_CTRL`、
+`MODE_ARMED`。控制方常量：`OWNER_UNKNOWN`、`OWNER_INTERNAL`、
+`OWNER_USER`。健康常量：`HEALTH_UNKNOWN`、`HEALTH_OK`、
+`HEALTH_DEGRADED`、`HEALTH_UNHEALTHY`。
 
-- plain text，例如 `停止`
-- JSON object，且 `text` 字段非空，例如：
+| 字段 | 含义与单位 |
+| --- | --- |
+| `stamp`, `source` | 状态时间戳与来源 topic/node |
+| `mode`, `control_owner`, `mode_source` | 归一化模式、控制所有者及判断来源 |
+| `has_sport_fsm_mode`, `sport_fsm_mode` | 可选的 Unitree Sport FSM mode |
+| `has_sport_fsm_id`, `sport_fsm_id` | 可选的 Unitree Sport FSM id |
+| `rpy` | roll/pitch/yaw，rad |
+| `orientation` | ROS quaternion，x/y/z/w |
+| `angular_velocity` | IMU 角速度，rad/s |
+| `linear_acceleration` | IMU 线加速度，m/s² |
+| `motor_count` | 当前 lowstate 中的电机数 |
+| `has_max_temperature`, `max_temperature_c` | 可选最高电机温度，°C |
+| `has_battery_voltage`, `battery_voltage` | 可选电池电压，V |
+| `velocity`, `velocity_source` | `Twist` 速度及其来源；线速度 m/s、角速度 rad/s |
+| `health_state` | 归一化健康状态 |
+| `has_lowstate_age`, `lowstate_age` | 可选 lowstate 年龄，ROS `Duration` |
 
-```json
-{
-  "index": 1,
-  "timestamp": 1000000000,
-  "text": "宇树，向前走一秒",
-  "confidence": 0.95,
-  "is_final": true,
-  "language": "zh-CN"
-}
-```
+### `SafetyDecision.msg`
 
-### `/g1/audio/event`
+常量：`KIND_LOCO="loco"`、`KIND_ACTION="action"`、
+`DECISION_ALLOW="allow"`、`DECISION_REJECT="reject"`。
 
-`std_msgs/msg/String`。`g1_interface` 从 native `/audio_msg` 转发非 ASR 音频事件到该项目内部 topic。
+字段包括 `stamp`、`command_id`、`command_kind`、`decision`、人可读的
+`reason`、ROS `Duration` 类型的 `validation_latency`，以及作出决定时的
+`RobotStateSummary robot_state` 快照。
 
-用于桥接非 ASR 的 `/audio_msg` 消息（如播放状态 `{"play_state": 1}`），供 debug panel、音频状态监控等下游节点消费。消息原样转发，不做 schema 解析。
+### `SafetyStatus.msg`
 
-## voice_bridge 发布结构
+字段包括 `stamp`、`node_name`、`enabled`、`strict_mode`、当前
+`robot_state`、`allow_count`、`reject_count`、0.0–1.0 的
+`rejection_rate`、`last_rejection_reason`，以及
+`has_last_decision`/`last_decision`。尚无决定时 `has_last_decision=false`，
+consumer 不得读取默认构造的 `last_decision` 作为真实审计记录。
 
-### `/voice/cmd/loco`
+### `ValidatedLocoCommand.msg`
 
-`std_msgs/msg/String`，JSON：
+包含完整原始 `LocoIntent intent`、校验完成时间 `validated_at` 和
+`SafetyDecision validation`。`g1_interface` 必须核对 command ID、kind 和
+`DECISION_ALLOW`，并再次执行有限值与范围检查。
 
-```json
-{
-  "schema_version": "voice_command.v1",
-  "source": "voice_bridge",
-  "session_id": "s1",
-  "command_id": "c1",
-  "created_at": 10.0,
-  "text": "向前",
-  "vx": 0.2,
-  "vy": 0.0,
-  "vyaw": 0.0,
-  "duration_sec": 1.0
-}
-```
+### `ValidatedActionCommand.msg`
 
-### `/voice/cmd/action`
+包含完整原始 `ActionIntent intent`、校验完成时间 `validated_at` 和
+`SafetyDecision validation`。只允许已校验的 stop/cancel；二者最终都生成
+零速度 Sport API 请求。
 
-`std_msgs/msg/String`，JSON：
+## 时间、安全与优先级语义
 
-```json
-{
-  "schema_version": "voice_command.v1",
-  "source": "voice_bridge",
-  "session_id": "s1",
-  "command_id": "c2",
-  "created_at": 10.0,
-  "action": "stop",
-  "priority": "emergency",
-  "text": "停止"
-}
-```
+- ROS `Time`/`Duration` 用于消息传输、rosbag 和审计。
+- deadline、watchdog、freshness 和 API timeout 的本地判断必须使用单调
+  时钟；不得用可能跳变的 wall clock 或 ROS stamp 推导本地 deadline。
+- 正常 loco 需要 fresh lowstate、fresh safety heartbeat、fresh mode 查询、
+  internal `sport_api_loco` ownership，且不能有未确认的 velocity 请求。
+- stop/cancel、watchdog stop 和 shutdown stop 不得被 stale lowstate、模式
+  状态或 safety heartbeat 阻止。
+- 同一处理窗口内同时出现 stop 和 loco 时，stop 必须优先。
 
-## safety_control 发布结构
+## ASR 来源模式
 
-### `/g1/safe_cmd/loco`
+`g1_interface` 的 `asr.source_mode` 定义原生 ASR 与自定义 ASR 的关系：
 
-`std_msgs/msg/String`，JSON。保留原始命令字段，并添加验证结果。`g1_interface` 订阅此主题时必须要求 `validation_result.allowed == true`：
+- `builtin`：转发 native `/audio_msg` 中的 ASR 事件；
+- `custom`：不转发 native ASR，由 `asr_node` 发布；
+- `both`：两种来源都可发布到 `/g1/audio/asr`；producer 必须正确标记
+  `source` 和可用的 `sequence_id`，便于观测与上层去重。
 
-```json
-{
-  "schema_version": "voice_command.v1",
-  "source": "voice_bridge",
-  "session_id": "s1",
-  "command_id": "c1",
-  "created_at": 10.0,
-  "text": "向前",
-  "vx": 0.2,
-  "vy": 0.0,
-  "vyaw": 0.0,
-  "duration_sec": 1.0,
-  "validated_at": 10.02,
-  "validation_result": {
-    "allowed": true,
-    "reason": null,
-    "check_details": {}
-  },
-  "robot_state_snapshot": {}
-}
-```
+播放状态仍由 `/audio_msg` 转换为 `/g1/audio/event` 的 `VoiceEvent`。
 
-### `/g1/safe_cmd/stop`
+## 允许保留 JSON/String 的边界
 
-`std_msgs/msg/String`，JSON。保留 action 命令并添加验证结果。`g1_interface` 订阅此主题时必须要求 `validation_result.allowed == true` 且 `action` 为 `"stop"` 或 `"cancel"`。`stop` 和 `cancel` 是紧急通道，允许绕过普通状态检查。
-
-### `/g1/safety/decisions`
-
-`std_msgs/msg/String`，JSON：
-
-```json
-{
-  "timestamp": 10.02,
-  "command_id": "c1",
-  "command_kind": "loco",
-  "decision": "allow",
-  "reason": null,
-  "validation_time_ms": 1.2,
-  "robot_state": {},
-  "check_details": {}
-}
-```
-
-## strict mode 策略
-
-当前默认：
-
-```yaml
-strict_mode: true
-require_command_timestamp: true
-```
-
-因此 loco 命令必须满足：
-
-- `/g1/state/low` 或 `/g1/state/health` 提供 fresh lowstate。
-- `/g1/state/mode` 或 `/g1/state/low` 提供明确 `mode`，且该 mode 来自 Sport API 查询状态。
-- `/voice/cmd/loco` 提供 `created_at`，且命令未超过 `command_timeout_ms`。
-- `vx/vy/vyaw/duration_sec` 在运动限制内。
-- 速度变化不超过连续性限制。
-
-Non-motion health parameters such as motor temperature and battery voltage are not part of the P0 strict requirement. They remain in `g1_state.v1` for monitoring and future policy use, and enforcement can be enabled later with `require_motor_temperature: true` or `require_battery_voltage: true`.
-
-停止命令仍然无条件允许通过安全节点并发往 `/g1/safe_cmd/stop`。
+- Unitree 原生 `/audio_msg` 使用官方 `std_msgs/msg/String` 载荷；
+  `g1_interface` 在此边界解析 ASR/播放 JSON 并转为 `VoiceEvent`。
+- Unitree `unitree_api/msg/Request.parameter` 以及 response 的字符串载荷按
+  官方 Sport/Voice API 继续使用 JSON。
+- Pi Agent JSONL RPC、外部 HTTP、WebSocket 和调试日志继续使用 JSON。
+- `/g1/state/motors` 是本阶段未迁移的非核心监控 topic，可暂时保留
+  `std_msgs/msg/String`。
+- `/voice/state`、`/voice/debug/events`、TTS 与 LED 是状态、调试或外部设备
+  边界，不属于上表的强类型运动控制链。

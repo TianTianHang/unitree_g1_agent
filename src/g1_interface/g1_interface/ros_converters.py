@@ -6,12 +6,19 @@ import math
 from builtin_interfaces.msg import Time
 
 from g1_agent_msgs.msg import (
+    ActionIntent,
     RobotStateSummary,
+    SafetyDecision,
     ValidatedActionCommand,
     ValidatedLocoCommand,
     VoiceEvent,
 )
 from g1_interface.internal_types import LowStateSummary, SportCommand
+
+KIND_LOCO = str(getattr(SafetyDecision, "KIND_LOCO"))
+KIND_ACTION = str(getattr(SafetyDecision, "KIND_ACTION"))
+ACTION_STOP = str(getattr(ActionIntent, "ACTION_STOP"))
+ACTION_CANCEL = str(getattr(ActionIntent, "ACTION_CANCEL"))
 
 
 def _time_from_sec(value: float) -> Time:
@@ -43,7 +50,7 @@ def _require_allow(command_id: str, command_kind: str, validation) -> None:
 def sport_command_from_loco(msg: ValidatedLocoCommand) -> SportCommand:
     _require_allow(
         msg.intent.command_id,
-        msg.validation.KIND_LOCO,
+        KIND_LOCO,
         msg.validation,
     )
     values = [
@@ -66,12 +73,12 @@ def sport_command_from_loco(msg: ValidatedLocoCommand) -> SportCommand:
 def sport_command_from_action(msg: ValidatedActionCommand) -> SportCommand:
     _require_allow(
         msg.intent.command_id,
-        msg.validation.KIND_ACTION,
+        KIND_ACTION,
         msg.validation,
     )
     if msg.intent.action not in {
-        msg.intent.ACTION_STOP,
-        msg.intent.ACTION_CANCEL,
+        ACTION_STOP,
+        ACTION_CANCEL,
     }:
         raise ValueError(f"safe_stop action must be stop or cancel: {msg.intent.action}")
     return SportCommand(

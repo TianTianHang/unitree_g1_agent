@@ -4,7 +4,7 @@ from __future__ import annotations
 import socket
 import struct
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 
 class AudioCapture:
@@ -91,7 +91,7 @@ class AudioCapture:
                 data, _ = self._sock.recvfrom(self._recv_buffer_size)
                 if data:
                     callback(data)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break
