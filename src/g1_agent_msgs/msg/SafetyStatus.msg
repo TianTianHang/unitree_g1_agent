@@ -1,0 +1,11 @@
+builtin_interfaces/Time stamp
+string node_name
+bool enabled
+bool strict_mode
+g1_agent_msgs/RobotStateSummary robot_state
+uint64 allow_count
+uint64 reject_count
+float64 rejection_rate
+string last_rejection_reason
+bool has_last_decision
+g1_agent_msgs/SafetyDecision last_decision

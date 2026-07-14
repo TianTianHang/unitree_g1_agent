@@ -7,8 +7,9 @@ from typing import Any
 
 from voice_bridge.agent import AgentClient, build_agent_client
 from voice_bridge.config import VoiceBridgeConfig
-from voice_bridge.intent import VoiceSession, new_session_id, parse_asr_event
+from voice_bridge.intent import VoiceSession, new_session_id
 from voice_bridge.internal_types import AgentCommand, AgentRequest, AgentResult, SessionDecision
+from voice_bridge.ros_converters import action_intent, asr_event, loco_intent
 
 
 def _json(data: dict[str, Any]) -> str:
@@ -96,6 +97,42 @@ def build_action_payload(
     }
 
 
+def _time_to_sec(value) -> float:
+    return float(value.sec) + float(value.nanosec) / 1_000_000_000.0
+
+
+def _duration_to_sec(value) -> float:
+    return float(value.sec) + float(value.nanosec) / 1_000_000_000.0
+
+
+def _loco_intent_debug_payload(msg) -> dict[str, Any]:
+    return {
+        "schema_version": COMMAND_SCHEMA_VERSION,
+        "source": msg.source,
+        "session_id": msg.session_id,
+        "command_id": msg.command_id,
+        "created_at": _time_to_sec(msg.created_at),
+        "text": msg.text,
+        "vx": msg.vx,
+        "vy": msg.vy,
+        "vyaw": msg.vyaw,
+        "duration_sec": _duration_to_sec(msg.duration),
+    }
+
+
+def _action_intent_debug_payload(msg) -> dict[str, Any]:
+    return {
+        "schema_version": COMMAND_SCHEMA_VERSION,
+        "source": msg.source,
+        "session_id": msg.session_id,
+        "command_id": msg.command_id,
+        "created_at": _time_to_sec(msg.created_at),
+        "action": msg.action,
+        "priority": msg.priority,
+        "text": msg.text,
+    }
+
+
 def build_tts_payload(text: str, session_id: str | None, *, interrupt: bool = True) -> dict[str, Any]:
     return {
         "source": "voice_bridge",
@@ -155,9 +192,16 @@ def _load_ros_messages():
     from diagnostic_msgs.msg import DiagnosticArray
     from std_msgs.msg import String
 
+    from g1_agent_msgs.msg import ActionIntent, LocoIntent, RobotStateSummary, SafetyStatus, VoiceEvent
+
     return {
+        "ActionIntent": ActionIntent,
         "DiagnosticArray": DiagnosticArray,
+        "LocoIntent": LocoIntent,
+        "RobotStateSummary": RobotStateSummary,
+        "SafetyStatus": SafetyStatus,
         "String": String,
+        "VoiceEvent": VoiceEvent,
     }
 
 
@@ -182,16 +226,16 @@ class VoiceBridgeNode:
         self.last_error: str | None = None
 
         topics = config.topics
-        self.loco_pub = node.create_publisher(self.msg["String"], topics["voice_loco"], 10)
-        self.action_pub = node.create_publisher(self.msg["String"], topics["voice_action"], 10)
+        self.loco_pub = node.create_publisher(self.msg["LocoIntent"], topics["voice_loco"], 10)
+        self.action_pub = node.create_publisher(self.msg["ActionIntent"], topics["voice_action"], 10)
         self.tts_pub = node.create_publisher(self.msg["String"], topics["tts"], 10)
         self.led_pub = node.create_publisher(self.msg["String"], topics["led"], 10)
         self.state_pub = node.create_publisher(self.msg["String"], topics["voice_state"], 10)
         self.debug_pub = node.create_publisher(self.msg["String"], topics["debug_events"], 10)
 
-        node.create_subscription(self.msg["String"], topics["asr"], self.on_asr, 10)
-        node.create_subscription(self.msg["String"], topics["robot_mode"], self.on_robot_mode, 10)
-        node.create_subscription(self.msg["String"], topics["safety_state"], self.on_safety_state, 10)
+        node.create_subscription(self.msg["VoiceEvent"], topics["asr"], self.on_asr, 10)
+        node.create_subscription(self.msg["RobotStateSummary"], topics["robot_mode"], self.on_robot_mode, 10)
+        node.create_subscription(self.msg["SafetyStatus"], topics["safety_state"], self.on_safety_state, 10)
         node.create_subscription(self.msg["DiagnosticArray"], topics["health"], self.on_health, 10)
         node.create_timer(1.0, self.publish_state)
 
@@ -234,10 +278,10 @@ class VoiceBridgeNode:
         self._publish_debug_event("command_published", session_id, {"topic": topic, "payload": payload}, now_sec)
 
     def on_robot_mode(self, msg) -> None:
-        self.robot_mode = msg.data
+        self.robot_mode = msg.mode
 
     def on_safety_state(self, msg) -> None:
-        self.safety_state = msg.data
+        self.safety_state = msg.robot_state.health_state
 
     def on_health(self, msg) -> None:
         self.health_state = diagnostic_summary(msg)
@@ -245,7 +289,7 @@ class VoiceBridgeNode:
     def on_asr(self, msg) -> None:
         now_sec = self._now_sec()
         try:
-            event = parse_asr_event(msg.data)
+            event = asr_event(msg)
             self._publish_debug_event(
                 "asr_received",
                 None,
@@ -259,7 +303,7 @@ class VoiceBridgeNode:
                 now_sec,
             )
             decision = self.session.handle_asr(event, self.config, now_sec)
-        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        except (TypeError, ValueError) as exc:
             self.last_error = str(exc)
             self.publish_state()
             self.node.get_logger().warning(f"rejecting ASR event: {exc}")
@@ -281,17 +325,20 @@ class VoiceBridgeNode:
         action = decision.action or "stop"
         if action in {"stop", "cancel"}:
             self._agent_requests.invalidate()
-        payload = build_action_payload(
-            action=action,
+        intent = action_intent(
             session_id=session_id,
             command_id=self._new_command_id(now_sec, action),
             text=decision.text or "",
             created_at=now_sec,
+            action=action,
             priority="emergency" if action == "stop" else "normal",
         )
-        self._publish_string(self.action_pub, payload)
+        self.action_pub.publish(intent)
         self._publish_command_debug_event(
-            self.config.topics["voice_action"], session_id, payload, self._now_sec()
+            self.config.topics["voice_action"],
+            session_id,
+            _action_intent_debug_payload(intent),
+            self._now_sec(),
         )
         if action in {"stop", "cancel"} and self._closeable_agent is not None:
             self._closeable_agent.abort()
@@ -364,21 +411,39 @@ class VoiceBridgeNode:
                     text=request.text,
                     created_at=publish_sec,
                 )
-                self._publish_string(self.loco_pub, payload)
-                self._publish_command_debug_event(self.config.topics["voice_loco"], request.session_id, payload, publish_sec)
+                intent = loco_intent(
+                    session_id=payload["session_id"],
+                    command_id=payload["command_id"],
+                    text=payload["text"],
+                    created_at=payload["created_at"],
+                    vx=payload["vx"],
+                    vy=payload["vy"],
+                    vyaw=payload["vyaw"],
+                    duration_sec=payload["duration_sec"],
+                )
+                self.loco_pub.publish(intent)
+                self._publish_command_debug_event(
+                    self.config.topics["voice_loco"],
+                    request.session_id,
+                    _loco_intent_debug_payload(intent),
+                    publish_sec,
+                )
             elif command.kind == "action":
                 action = str(command.params.get("action", "stop"))
-                payload = build_action_payload(
-                    action=action,
+                intent = action_intent(
                     session_id=request.session_id,
                     command_id=self._new_command_id(publish_sec, action),
                     text=request.text,
                     created_at=publish_sec,
+                    action=action,
                     priority="emergency" if action == "stop" else "normal",
                 )
-                self._publish_string(self.action_pub, payload)
+                self.action_pub.publish(intent)
                 self._publish_command_debug_event(
-                    self.config.topics["voice_action"], request.session_id, payload, publish_sec
+                    self.config.topics["voice_action"],
+                    request.session_id,
+                    _action_intent_debug_payload(intent),
+                    publish_sec,
                 )
             elif command.kind == "say":
                 text = str(command.params.get("text", ""))

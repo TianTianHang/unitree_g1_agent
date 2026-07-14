@@ -1,76 +1,17 @@
 from __future__ import annotations
 
 import json
-import math
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from g1_interface.internal_types import SportCommand
-
-SAFE_LOCO_LIMITS = {
-    "vx": (-0.5, 0.5),
-    "vy": (-0.3, 0.3),
-    "vyaw": (-0.8, 0.8),
-    "duration_sec": (0.01, 2.0),
-}
-
-STATE_SCHEMA_VERSION = "g1_state.v1"
-
-
-def _bounded_float(payload: dict[str, Any], field: str) -> float:
-    try:
-        value = float(payload[field])
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field} must be numeric") from exc
-
-    if not math.isfinite(value):
-        raise ValueError(f"{field} non-finite")
-
-    low, high = SAFE_LOCO_LIMITS[field]
-    if value < low or value > high:
-        raise ValueError(f"{field} out of range")
-    return value
-
-
-def _require_validated_payload(payload: dict[str, Any], command_name: str) -> None:
-    validation_result = payload.get("validation_result")
-    if not isinstance(validation_result, dict):
-        raise ValueError(f"{command_name} missing validation_result")
-    if validation_result.get("allowed") is not True:
-        raise ValueError(f"{command_name} not allowed by safety validation")
-
-
-def parse_safe_loco_command(raw_json: str) -> SportCommand:
-    payload = json.loads(raw_json)
-    if not isinstance(payload, dict):
-        raise ValueError("safe_loco payload must be a JSON object")
-    _require_validated_payload(payload, "safe_loco")
-    required = ["vx", "vy", "vyaw", "duration_sec"]
-    missing = [field for field in required if field not in payload]
-    if missing:
-        raise ValueError(f"missing required loco field: {', '.join(missing)}")
-    vx = _bounded_float(payload, "vx")
-    vy = _bounded_float(payload, "vy")
-    vyaw = _bounded_float(payload, "vyaw")
-    duration_sec = _bounded_float(payload, "duration_sec")
-    return SportCommand(
-        action="set_velocity",
-        params={
-            "velocity": [vx, vy, vyaw],
-            "duration": duration_sec,
-        },
-    )
-
-
-def parse_stop_command(raw_json: str) -> SportCommand:
-    payload = json.loads(raw_json)
-    if not isinstance(payload, dict):
-        raise ValueError("safe_stop payload must be a JSON object")
-    _require_validated_payload(payload, "safe_stop")
-    action = str(payload.get("action", "")).strip().lower()
-    if action not in {"stop", "cancel"}:
-        raise ValueError(f"safe_stop action must be stop or cancel: {action}")
-    return SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0], "duration": 0.1})
+from g1_interface.ros_converters import (
+    native_audio_event,
+    robot_state_summary,
+    sport_command_from_action,
+    sport_command_from_loco,
+)
 
 
 def _age_ms(now_sec: float, last_sec: float | None) -> int | None:
@@ -106,16 +47,13 @@ def build_health_status(
         and now_sec - last_successful_mode_query_sec <= mode_freshness_timeout_sec
     )
     safety_fresh = (
-        last_safety_heartbeat_sec is not None
-        and now_sec - last_safety_heartbeat_sec <= safety_heartbeat_timeout_sec
+        last_safety_heartbeat_sec is not None and now_sec - last_safety_heartbeat_sec <= safety_heartbeat_timeout_sec
     )
 
     public_command_ack = None
     command_ack_unhealthy = False
     if last_command_ack is not None:
-        public_command_ack = {
-            key: value for key, value in last_command_ack.items() if key != "updated_monotonic_sec"
-        }
+        public_command_ack = {key: value for key, value in last_command_ack.items() if key != "updated_monotonic_sec"}
         public_command_ack["age_ms"] = _age_ms(now_sec, last_command_ack.get("updated_monotonic_sec"))
         command_ack_unhealthy = public_command_ack.get("state") in {"pending", "rejected", "timed_out"}
 
@@ -128,11 +66,7 @@ def build_health_status(
     if not lowstate_fresh or consecutive_api_timeouts >= api_unhealthy_timeout_count:
         state = "unhealthy"
     elif (
-        not mode_fresh
-        or not safety_fresh
-        or consecutive_api_timeouts > 0
-        or command_ack_unhealthy
-        or api_result_failed
+        not mode_fresh or not safety_fresh or consecutive_api_timeouts > 0 or command_ack_unhealthy or api_result_failed
     ):
         state = "degraded"
     else:
@@ -169,92 +103,8 @@ def diagnostic_level_for_state(state: str) -> bytes:
     return b"\x01"
 
 
-def normalize_audio_asr_message(raw_text: str) -> str | None:
-    text = raw_text.strip()
-    if not text:
-        return None
-
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return text
-
-    if not isinstance(payload, dict):
-        return None
-
-    event_text = payload.get("text")
-    if not isinstance(event_text, str):
-        return None
-    event_text = event_text.strip()
-    if not event_text:
-        return None
-
-    return text
-
-
 def should_forward_native_asr(source_mode: str) -> bool:
     return source_mode in {"builtin", "both"}
-
-
-def build_low_state_payload(
-    *,
-    stamp_sec: float,
-    source: str,
-    mode: str | None,
-    control_owner: str,
-    mode_source: str,
-    summary: Any,
-    velocity: dict[str, float],
-    sport_fsm_mode: int | None = None,
-    sport_fsm_id: int | None = None,
-) -> dict[str, Any]:
-    return {
-        "schema_version": STATE_SCHEMA_VERSION,
-        "source": source,
-        "stamp_sec": stamp_sec,
-        "mode": mode,
-        "control_owner": control_owner,
-        "mode_source": mode_source,
-        "sport_fsm_mode": sport_fsm_mode,
-        "sport_fsm_id": sport_fsm_id,
-        "rpy": summary.rpy,
-        "quaternion": summary.quaternion,
-        "gyroscope": summary.gyroscope,
-        "accelerometer": summary.accelerometer,
-        "motor_count": summary.motor_count,
-        "max_temperature_c": summary.max_temperature_c,
-        "battery_voltage": None,
-        "velocity": {
-            "vx": float(velocity.get("vx", 0.0)),
-            "vy": float(velocity.get("vy", 0.0)),
-            "vyaw": float(velocity.get("vyaw", 0.0)),
-        },
-        "velocity_source": "last_sport_command",
-    }
-
-
-def build_mode_payload(
-    *,
-    stamp_sec: float,
-    source: str,
-    mode: str | None,
-    control_owner: str,
-    mode_source: str,
-    motor_count: int,
-    sport_fsm_mode: int | None = None,
-    sport_fsm_id: int | None = None,
-) -> dict[str, Any]:
-    return {
-        "schema_version": STATE_SCHEMA_VERSION,
-        "source": source,
-        "stamp_sec": stamp_sec,
-        "mode": mode,
-        "control_owner": control_owner,
-        "mode_source": mode_source,
-        "sport_fsm_mode": sport_fsm_mode,
-        "sport_fsm_id": sport_fsm_id,
-        "motor_count": motor_count,
-    }
 
 
 def check_sport_command_allowed(
@@ -307,12 +157,25 @@ def _load_ros_messages():
     from unitree_api.msg import Request, Response
     from unitree_hg.msg import IMUState, LowState
 
+    from g1_agent_msgs.msg import (
+        RobotStateSummary,
+        SafetyStatus,
+        ValidatedActionCommand,
+        ValidatedLocoCommand,
+        VoiceEvent,
+    )
+
     return {
         "DiagnosticArray": DiagnosticArray,
         "DiagnosticStatus": DiagnosticStatus,
         "KeyValue": KeyValue,
         "Imu": Imu,
+        "RobotStateSummary": RobotStateSummary,
+        "SafetyStatus": SafetyStatus,
         "String": String,
+        "ValidatedActionCommand": ValidatedActionCommand,
+        "ValidatedLocoCommand": ValidatedLocoCommand,
+        "VoiceEvent": VoiceEvent,
         "Request": Request,
         "Response": Response,
         "IMUState": IMUState,
@@ -334,6 +197,7 @@ class G1InterfaceNode:
         self.last_api_result: dict[str, Any] | None = None
         self.last_command_ack: dict[str, Any] | None = None
         self.consecutive_api_timeouts = 0
+        self.invalid_audio_event_count = 0
 
         self.state_timeout_sec = config.timeouts["state_timeout_ms"] / 1000.0
         self.safety_heartbeat_timeout_sec = config.timeouts["safety_heartbeat_timeout_ms"] / 1000.0
@@ -361,13 +225,13 @@ class G1InterfaceNode:
             response_timeout_sec=config.timeouts["api_response_timeout_ms"] / 1000.0,
         )
 
-        self.low_pub = node.create_publisher(self.msg["String"], "/g1/state/low", 10)
+        self.low_pub = node.create_publisher(self.msg["RobotStateSummary"], "/g1/state/low", 10)
         self.motor_pub = node.create_publisher(self.msg["String"], "/g1/state/motors", 10)
-        self.mode_pub = node.create_publisher(self.msg["String"], "/g1/state/mode", 10)
+        self.mode_pub = node.create_publisher(self.msg["RobotStateSummary"], "/g1/state/mode", 10)
         self.health_pub = node.create_publisher(self.msg["DiagnosticArray"], "/g1/state/health", 10)
         self.imu_pub = node.create_publisher(self.msg["Imu"], "/g1/state/imu", 10)
-        self.asr_pub = node.create_publisher(self.msg["String"], config.project_topics["asr"], 10)
-        self.audio_event_pub = node.create_publisher(self.msg["String"], config.project_topics["audio_event"], 10)
+        self.asr_pub = node.create_publisher(self.msg["VoiceEvent"], config.project_topics["asr"], 10)
+        self.audio_event_pub = node.create_publisher(self.msg["VoiceEvent"], config.project_topics["audio_event"], 10)
         self.sport_request_pub = node.create_publisher(
             self.msg["Request"],
             config.native_topics["sport_request"],
@@ -405,13 +269,23 @@ class G1InterfaceNode:
             10,
         )
         node.create_subscription(
-            self.msg["String"],
+            self.msg["SafetyStatus"],
             config.project_topics["safety_state"],
             self.on_safety_state,
             10,
         )
-        node.create_subscription(self.msg["String"], "/g1/safe_cmd/loco", self.on_safe_loco, 10)
-        node.create_subscription(self.msg["String"], "/g1/safe_cmd/stop", self.on_safe_stop, 10)
+        node.create_subscription(
+            self.msg["ValidatedLocoCommand"],
+            "/g1/safe_cmd/loco",
+            self.on_safe_loco,
+            10,
+        )
+        node.create_subscription(
+            self.msg["ValidatedActionCommand"],
+            "/g1/safe_cmd/stop",
+            self.on_safe_stop,
+            10,
+        )
 
         period = config.timeouts["health_publish_period_ms"] / 1000.0
         node.create_timer(period, self.publish_health)
@@ -435,23 +309,19 @@ class G1InterfaceNode:
         stamp_sec = self._now_sec()
         self.last_lowstate_monotonic_sec = self._monotonic_sec()
         summary = self._lowstate_to_summary(msg, source=self.config.native_topics["low_state"])
-        text = self.msg["String"]()
-        text.data = json.dumps(
-            build_low_state_payload(
-                stamp_sec=stamp_sec,
-                source=summary.source,
-                mode=self.mode,
-                control_owner=self.control_owner,
-                mode_source=self.mode_source,
-                summary=summary,
-                velocity=self.commanded_velocity,
-                sport_fsm_mode=self.sport_fsm_mode,
-                sport_fsm_id=self.sport_fsm_id,
-            ),
-            ensure_ascii=False,
-            sort_keys=True,
+        self.low_pub.publish(
+            robot_state_summary(
+                summary,
+                stamp_sec,
+                summary.source,
+                self.mode,
+                self.control_owner,
+                self.mode_source,
+                self.commanded_velocity,
+                self.sport_fsm_mode,
+                self.sport_fsm_id,
+            )
         )
-        self.low_pub.publish(text)
 
         motor_text = self.msg["String"]()
         motor_text.data = json.dumps(
@@ -464,22 +334,19 @@ class G1InterfaceNode:
     def on_lowstate_low_freq(self, msg):
         stamp_sec = self._now_sec()
         summary = self._lowstate_to_summary(msg, source=self.config.native_topics["low_state_low_freq"])
-        mode_text = self.msg["String"]()
-        mode_text.data = json.dumps(
-            build_mode_payload(
-                stamp_sec=stamp_sec,
-                source=summary.source,
-                mode=self.mode,
-                control_owner=self.control_owner,
-                mode_source=self.mode_source,
-                motor_count=summary.motor_count,
-                sport_fsm_mode=self.sport_fsm_mode,
-                sport_fsm_id=self.sport_fsm_id,
-            ),
-            ensure_ascii=False,
-            sort_keys=True,
+        self.mode_pub.publish(
+            robot_state_summary(
+                summary,
+                stamp_sec,
+                summary.source,
+                self.mode,
+                self.control_owner,
+                self.mode_source,
+                self.commanded_velocity,
+                self.sport_fsm_mode,
+                self.sport_fsm_id,
+            )
         )
-        self.mode_pub.publish(mode_text)
 
     def on_secondary_imu(self, msg):
         payload = self._imu_to_payload(msg, frame_id="g1_torso")
@@ -513,31 +380,20 @@ class G1InterfaceNode:
         self._update_sport_state_from_response(result, now_sec)
 
     def on_safety_state(self, msg) -> None:
-        try:
-            payload = json.loads(getattr(msg, "data", ""))
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            self.node.get_logger().warning(f"ignoring invalid safety_control heartbeat: {exc}")
-            return
-        if not isinstance(payload, dict) or payload.get("node") != "safety_control":
+        if msg.node_name != "safety_control":
             return
         self.last_safety_heartbeat_monotonic_sec = self._monotonic_sec()
 
     def on_audio_msg(self, msg) -> None:
-        raw = getattr(msg, "data", "").strip()
-        if not raw:
+        event = native_audio_event(getattr(msg, "data", ""), self._now_sec())
+        if event is None:
+            self.invalid_audio_event_count += 1
             return
-
-        normalized = normalize_audio_asr_message(raw)
-        if normalized is not None:
+        if event.event_type == self.msg["VoiceEvent"].EVENT_ASR:
             if should_forward_native_asr(str(self.config.asr["source_mode"])):
-                text = self.msg["String"]()
-                text.data = normalized
-                self.asr_pub.publish(text)
+                self.asr_pub.publish(event)
             return
-
-        text = self.msg["String"]()
-        text.data = raw
-        self.audio_event_pub.publish(text)
+        self.audio_event_pub.publish(event)
 
     def on_safe_loco(self, msg):
         now_sec = self._monotonic_sec()
@@ -558,17 +414,17 @@ class G1InterfaceNode:
             return
 
         try:
-            command = parse_safe_loco_command(msg.data)
+            command = sport_command_from_loco(msg)
             self._publish_velocity_command(command, now_sec=now_sec, stop_reason=None)
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (TypeError, ValueError) as exc:
             self.node.get_logger().warning(f"rejecting safe_loco: {exc}")
 
     def on_safe_stop(self, msg):
         now_sec = self._monotonic_sec()
         try:
-            command = parse_stop_command(msg.data)
+            command = sport_command_from_action(msg)
             self._publish_velocity_command(command, now_sec=now_sec, stop_reason="safe_stop")
-        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (TypeError, ValueError) as exc:
             self.node.get_logger().warning(f"rejecting safe_stop: {exc}")
 
     def _publish_velocity_command(
@@ -763,6 +619,7 @@ class G1InterfaceNode:
             last_safety_heartbeat_sec=self.last_safety_heartbeat_monotonic_sec,
             safety_heartbeat_timeout_sec=self.safety_heartbeat_timeout_sec,
         )
+        status_payload["invalid_audio_event_count"] = self.invalid_audio_event_count
 
         status = self.msg["DiagnosticStatus"]()
         status.name = "g1_interface"

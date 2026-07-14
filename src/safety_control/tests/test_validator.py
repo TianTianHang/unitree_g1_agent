@@ -1,8 +1,12 @@
-import pytest
+import math
 
+import pytest
+from builtin_interfaces.msg import Duration, Time
+
+from g1_agent_msgs.msg import ActionIntent, LocoIntent
 from safety_control.config import SafetyControlConfig
 from safety_control.internal_types import RobotStateSnapshot
-from safety_control.validator import RateLimiter, SafetyValidator, parse_action_intent, parse_loco_intent
+from safety_control.validator import RateLimiter, SafetyValidator, validate_action_shape, validate_intent_shape
 
 
 def healthy_state(**overrides):
@@ -20,47 +24,54 @@ def healthy_state(**overrides):
     return RobotStateSnapshot(**values)
 
 
-def loco_payload(**overrides):
-    values = {
-        "source": "voice_bridge",
-        "session_id": "s1",
-        "command_id": "c1",
-        "text": "forward",
-        "vx": 0.2,
-        "vy": 0.0,
-        "vyaw": 0.0,
-        "duration_sec": 1.0,
-        "created_at": 9.95,
-    }
-    values.update(overrides)
-    return values
-
-
-def test_parse_loco_intent_requires_numeric_fields():
-    intent = parse_loco_intent(
-        '{"command_id": "c1", "vx": 0.2, "vy": 0.0, "vyaw": 0.1, "duration_sec": 1.0}',
-        now_sec=10.0,
+def loco_intent(**overrides):
+    values = dict(
+        created_at=Time(sec=9, nanosec=950_000_000),
+        source="voice_bridge",
+        session_id="s1",
+        command_id="c1",
+        text="forward",
+        vx=0.2,
+        vy=0.0,
+        vyaw=0.0,
+        duration=Duration(sec=1),
     )
-
-    assert intent.command_id == "c1"
-    assert intent.vx == 0.2
-    assert intent.created_at_sec is None
-
-    with pytest.raises(ValueError, match="missing field: vyaw"):
-        parse_loco_intent('{"vx": 0.2, "vy": 0.0, "duration_sec": 1.0}', now_sec=10.0)
+    values.update(overrides)
+    return LocoIntent(**values)
 
 
-def test_parse_action_intent_normalizes_action():
-    intent = parse_action_intent('{"command_id": "c2", "action": "STOP", "priority": "emergency"}', 10.0)
+def action_intent(action=ActionIntent.ACTION_STOP, **overrides):
+    values = dict(
+        created_at=Time(sec=10),
+        source="voice_bridge",
+        session_id="s1",
+        command_id="stop1",
+        text="stop",
+        action=action,
+        priority=ActionIntent.PRIORITY_EMERGENCY,
+    )
+    values.update(overrides)
+    return ActionIntent(**values)
 
-    assert intent.action == "stop"
-    assert intent.priority == "emergency"
+
+def test_validate_loco_shape_rejects_empty_id_and_non_finite_values():
+    with pytest.raises(ValueError, match="command_id must be non-empty"):
+        validate_intent_shape(loco_intent(command_id="  "))
+    with pytest.raises(ValueError, match="vx must be finite"):
+        validate_intent_shape(loco_intent(vx=math.nan))
+
+
+def test_validate_action_shape_rejects_empty_fields():
+    with pytest.raises(ValueError, match="command_id must be non-empty"):
+        validate_action_shape(action_intent(command_id=""))
+    with pytest.raises(ValueError, match="action must be non-empty"):
+        validate_action_shape(action_intent(action=""))
 
 
 def test_validator_allows_fresh_loco_in_sport_mode():
     config = SafetyControlConfig.default()
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload())
+    intent = loco_intent()
 
     decision = validator.validate_loco(intent, healthy_state(), now_sec=10.0)
 
@@ -72,7 +83,7 @@ def test_validator_allows_fresh_loco_in_sport_mode():
 def test_validator_allows_missing_battery_by_default():
     config = SafetyControlConfig.default()
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload())
+    intent = loco_intent()
 
     decision = validator.validate_loco(intent, healthy_state(battery_voltage=None), now_sec=10.0)
 
@@ -83,7 +94,7 @@ def test_validator_allows_missing_battery_by_default():
 def test_validator_allows_missing_temperature_by_default():
     config = SafetyControlConfig.default()
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload())
+    intent = loco_intent()
 
     decision = validator.validate_loco(intent, healthy_state(max_temperature=None), now_sec=10.0)
 
@@ -105,7 +116,7 @@ def test_validator_rejects_missing_battery_when_required():
         }
     )
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload())
+    intent = loco_intent()
 
     decision = validator.validate_loco(intent, healthy_state(battery_voltage=None), now_sec=10.0)
 
@@ -116,7 +127,7 @@ def test_validator_rejects_missing_battery_when_required():
 def test_strict_validator_rejects_missing_timestamp():
     config = SafetyControlConfig.default()
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload(created_at=None))
+    intent = loco_intent(created_at=Time())
 
     decision = validator.validate_loco(intent, healthy_state(), now_sec=10.0)
 
@@ -127,7 +138,7 @@ def test_strict_validator_rejects_missing_timestamp():
 def test_strict_validator_rejects_missing_mode():
     config = SafetyControlConfig.default()
     validator = SafetyValidator(config)
-    intent = parse_loco_intent_json(loco_payload())
+    intent = loco_intent()
 
     decision = validator.validate_loco(intent, healthy_state(mode=None), now_sec=10.0)
 
@@ -137,7 +148,7 @@ def test_strict_validator_rejects_missing_mode():
 
 def test_validator_rejects_stale_lowstate():
     decision = SafetyValidator(SafetyControlConfig.default()).validate_loco(
-        parse_loco_intent_json(loco_payload()),
+        loco_intent(),
         healthy_state(lowstate_age_ms=500),
         now_sec=10.0,
     )
@@ -148,7 +159,7 @@ def test_validator_rejects_stale_lowstate():
 
 def test_validator_rejects_user_control_mode_for_loco():
     decision = SafetyValidator(SafetyControlConfig.default()).validate_loco(
-        parse_loco_intent_json(loco_payload()),
+        loco_intent(),
         healthy_state(mode="user_ctrl"),
         now_sec=10.0,
     )
@@ -159,7 +170,7 @@ def test_validator_rejects_user_control_mode_for_loco():
 
 def test_validator_rejects_expired_command():
     decision = SafetyValidator(SafetyControlConfig.default()).validate_loco(
-        parse_loco_intent_json(loco_payload(created_at=9.0)),
+        loco_intent(created_at=Time(sec=9)),
         healthy_state(),
         now_sec=10.0,
     )
@@ -172,7 +183,7 @@ def test_validator_rejects_motion_limit_and_continuity_violations():
     validator = SafetyValidator(SafetyControlConfig.default())
 
     range_decision = validator.validate_loco(
-        parse_loco_intent_json(loco_payload(vx=0.6)),
+        loco_intent(vx=0.6),
         healthy_state(),
         now_sec=10.0,
     )
@@ -180,7 +191,7 @@ def test_validator_rejects_motion_limit_and_continuity_violations():
     assert range_decision.reason == "vx out of range: 0.6"
 
     continuity_decision = validator.validate_loco(
-        parse_loco_intent_json(loco_payload(vx=0.5)),
+        loco_intent(vx=0.5),
         healthy_state(current_velocity={"vx": -0.1, "vy": 0.0, "vyaw": 0.0}),
         now_sec=10.0,
     )
@@ -190,8 +201,8 @@ def test_validator_rejects_motion_limit_and_continuity_violations():
 
 def test_stop_and_cancel_are_allowed_even_without_state():
     validator = SafetyValidator(SafetyControlConfig.default())
-    stop = parse_action_intent('{"command_id": "stop1", "action": "stop"}', 10.0)
-    cancel = parse_action_intent('{"command_id": "cancel1", "action": "cancel"}', 10.0)
+    stop = action_intent()
+    cancel = action_intent(action=ActionIntent.ACTION_CANCEL, command_id="cancel1")
     unhealthy = RobotStateSnapshot.unhealthy(timestamp=10.0)
 
     assert validator.validate_action(stop, unhealthy, now_sec=10.0).allowed is True
@@ -200,7 +211,7 @@ def test_stop_and_cancel_are_allowed_even_without_state():
 
 def test_non_stop_action_is_rejected():
     validator = SafetyValidator(SafetyControlConfig.default())
-    action = parse_action_intent('{"command_id": "a1", "action": "dance"}', 10.0)
+    action = action_intent(action="dance", command_id="a1")
 
     decision = validator.validate_action(action, healthy_state(), now_sec=10.0)
 
@@ -215,9 +226,3 @@ def test_rate_limiter_allows_burst_then_refill():
     assert limiter.allow(10.0) is True
     assert limiter.allow(10.0) is False
     assert limiter.allow(10.5) is True
-
-
-def parse_loco_intent_json(payload):
-    import json
-
-    return parse_loco_intent(json.dumps(payload), now_sec=10.0)

@@ -1,14 +1,21 @@
 import pytest
 
+from g1_agent_msgs.msg import (
+    ActionIntent,
+    LocoIntent,
+    RobotStateSummary,
+    SafetyStatus,
+    VoiceEvent,
+)
 from voice_bridge.internal_types import AgentCommand
 from voice_bridge.node import (
     AgentRequestState,
+    _supports_closeable,
     build_action_payload,
     build_led_payload,
     build_loco_payload,
     build_tts_payload,
     diagnostic_summary,
-    _supports_closeable,
 )
 
 
@@ -122,7 +129,7 @@ class FakePublisher:
         self.payloads = []
 
     def publish(self, msg):
-        self.payloads.append(msg.data)
+        self.payloads.append(msg)
 
 
 class FakeClockNow:
@@ -145,7 +152,15 @@ class FakeString:
 
 
 def fake_ros_messages():
-    return {"DiagnosticArray": object, "String": FakeString}
+    return {
+        "ActionIntent": ActionIntent,
+        "DiagnosticArray": object,
+        "LocoIntent": LocoIntent,
+        "RobotStateSummary": RobotStateSummary,
+        "SafetyStatus": SafetyStatus,
+        "String": FakeString,
+        "VoiceEvent": VoiceEvent,
+    }
 
 
 class FakeNode:
@@ -171,9 +186,9 @@ class FakeNode:
 
 
 def test_stop_action_aborts_closeable_agent_after_publish(monkeypatch):
+    from voice_bridge import node as node_module
     from voice_bridge.config import VoiceBridgeConfig
     from voice_bridge.internal_types import SessionDecision
-    from voice_bridge import node as node_module
     from voice_bridge.node import VoiceBridgeNode
 
     monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
@@ -192,11 +207,12 @@ def test_stop_action_aborts_closeable_agent_after_publish(monkeypatch):
 
     assert agent.aborted is True
     assert len(node.action_pub.payloads) == 1
+    assert node.action_pub.payloads[0].action == "stop"
 
 
 def test_shutdown_closes_closeable_agent(monkeypatch):
-    from voice_bridge.config import VoiceBridgeConfig
     from voice_bridge import node as node_module
+    from voice_bridge.config import VoiceBridgeConfig
     from voice_bridge.node import VoiceBridgeNode
 
     monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
@@ -247,7 +263,7 @@ def test_debug_event_publish_is_best_effort(monkeypatch):
     node = VoiceBridgeNode(FakeNode(), VoiceBridgeConfig.default(), agent=NonCloseableAgent())
     node._publish_debug_event("agent_started", "s1", {"text": "向前"}, 1.0)
 
-    payload = json.loads(node.debug_pub.payloads[-1])
+    payload = json.loads(node.debug_pub.payloads[-1].data)
     assert payload["schema_version"] == "voice_debug_event.v1"
     assert payload["event"] == "agent_started"
     assert payload["session_id"] == "s1"
@@ -274,8 +290,9 @@ def test_agent_result_debug_event_publishes_before_commands(monkeypatch):
 
     node._publish_agent_result(result, request, 1.0)
 
-    debug_payload = json.loads(node.debug_pub.payloads[0])
+    debug_payload = json.loads(node.debug_pub.payloads[0].data)
     assert debug_payload["event"] == "agent_result"
     assert debug_payload["data"]["reply_text"] == "收到"
     assert debug_payload["data"]["commands"][0]["kind"] == "loco"
     assert len(node.loco_pub.payloads) == 1
+    assert node.loco_pub.payloads[0].vx == 0.25

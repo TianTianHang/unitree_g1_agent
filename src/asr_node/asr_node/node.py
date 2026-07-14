@@ -1,7 +1,6 @@
 """ASR node - ROS2 node with a three-thread speech recognition pipeline."""
 from __future__ import annotations
 
-import json
 import os
 import queue
 import threading
@@ -18,9 +17,9 @@ _STOP_SENTINEL = None
 
 
 def _load_ros_messages():
-    from std_msgs.msg import String
+    from g1_agent_msgs.msg import VoiceEvent
 
-    return {"String": String}
+    return {"VoiceEvent": VoiceEvent}
 
 
 class AsrNode:
@@ -68,7 +67,7 @@ class AsrNode:
         )
 
         self._asr_pub = node.create_publisher(
-            self.msg["String"],
+            self.msg["VoiceEvent"],
             config.topics["asr_output"],
             10,
         )
@@ -184,22 +183,24 @@ class AsrNode:
             self._msg_counter += 1
             index = self._msg_counter
 
-        payload = json.dumps(
-            {
-                "text": text,
-                "is_final": True,
-                "source": self.config.output["source"],
-                "language": self.config.model["language"],
-                "index": index,
-            },
-            ensure_ascii=False,
-        )
-
-        msg = self.msg["String"]()
-        msg.data = payload
-        self._asr_pub.publish(msg)
+        self._asr_pub.publish(self._build_voice_event(text, index))
 
         self.node.get_logger().info(f"ASR result [{index}]: {text}")
+
+    def _build_voice_event(self, text: str, sequence_id: int):
+        msg = self.msg["VoiceEvent"]()
+        msg.stamp = self.node.get_clock().now().to_msg()
+        msg.source = str(self.config.output["source"])
+        msg.event_type = msg.EVENT_ASR
+        msg.has_sequence_id = True
+        msg.sequence_id = sequence_id
+        msg.text = text
+        msg.has_confidence = False
+        msg.confidence = 0.0
+        msg.is_final = True
+        msg.language = str(self.config.model["language"])
+        msg.has_playback_state = False
+        return msg
 
 
 def main(args=None) -> None:

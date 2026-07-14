@@ -1,103 +1,37 @@
 from __future__ import annotations
 
-import json
 import math
-from datetime import datetime
-from typing import Any
 
+from g1_agent_msgs.msg import ActionIntent, LocoIntent
 from safety_control.config import SafetyControlConfig
-from safety_control.internal_types import ActionIntent, LocoIntent, RobotStateSnapshot, SafetyDecision
+from safety_control.internal_types import RobotStateSnapshot, ValidationResult
 
 
-def _parse_json_object(raw_json: str) -> dict[str, Any]:
-    payload = json.loads(raw_json)
-    if not isinstance(payload, dict):
-        raise ValueError("payload must be a JSON object")
-    return payload
-
-
-def _finite_float(payload: dict[str, Any], field: str) -> float:
-    if field not in payload:
-        raise ValueError(f"missing field: {field}")
-    try:
-        value = float(payload[field])
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field} must be numeric") from exc
-    if not math.isfinite(value):
-        raise ValueError(f"{field} must be finite")
-    return value
-
-
-def _optional_str(payload: dict[str, Any], field: str) -> str | None:
-    value = payload.get(field)
-    if value is None:
+def time_to_sec(value) -> float | None:
+    if value.sec == 0 and value.nanosec == 0:
         return None
-    return str(value)
+    return float(value.sec) + float(value.nanosec) / 1_000_000_000.0
 
 
-def _command_id(payload: dict[str, Any], kind: str, now_sec: float) -> str:
-    value = str(payload.get("command_id") or "").strip()
-    if value:
-        return value
-    return f"{kind}-{now_sec:.6f}"
+def duration_to_sec(value) -> float:
+    return float(value.sec) + float(value.nanosec) / 1_000_000_000.0
 
 
-def _timestamp_sec(payload: dict[str, Any]) -> float | None:
-    for field in ["created_at", "created_at_sec", "timestamp", "stamp_sec", "issued_at"]:
-        if field not in payload:
-            continue
-        value = payload[field]
-        if value is None or value == "":
-            return None
-        if isinstance(value, dict):
-            sec = value.get("sec", value.get("secs", 0))
-            nanosec = value.get("nanosec", value.get("nsec", 0))
-            return float(sec) + float(nanosec) / 1_000_000_000.0
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            if isinstance(value, str):
-                try:
-                    return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
-                except ValueError as exc:
-                    raise ValueError(f"{field} must be numeric or ISO-8601") from exc
-            raise ValueError(f"{field} must be numeric") from None
-    return None
+def validate_intent_shape(intent: LocoIntent) -> None:
+    if not intent.command_id.strip():
+        raise ValueError("command_id must be non-empty")
+    for name in ("vx", "vy", "vyaw"):
+        if not math.isfinite(float(getattr(intent, name))):
+            raise ValueError(f"{name} must be finite")
+    if not math.isfinite(duration_to_sec(intent.duration)):
+        raise ValueError("duration must be finite")
 
 
-def parse_loco_intent(raw_json: str, now_sec: float) -> LocoIntent:
-    payload = _parse_json_object(raw_json)
-    return LocoIntent(
-        raw_command=dict(payload),
-        command_id=_command_id(payload, "loco", now_sec),
-        session_id=_optional_str(payload, "session_id"),
-        source=_optional_str(payload, "source"),
-        text=str(payload.get("text", "")),
-        vx=_finite_float(payload, "vx"),
-        vy=_finite_float(payload, "vy"),
-        vyaw=_finite_float(payload, "vyaw"),
-        duration_sec=_finite_float(payload, "duration_sec"),
-        created_at_sec=_timestamp_sec(payload),
-        received_at_sec=now_sec,
-    )
-
-
-def parse_action_intent(raw_json: str, now_sec: float) -> ActionIntent:
-    payload = _parse_json_object(raw_json)
-    action = str(payload.get("action", "")).strip().lower()
-    if not action:
-        raise ValueError("missing field: action")
-    return ActionIntent(
-        raw_command=dict(payload),
-        command_id=_command_id(payload, "action", now_sec),
-        session_id=_optional_str(payload, "session_id"),
-        source=_optional_str(payload, "source"),
-        text=str(payload.get("text", "")),
-        action=action,
-        priority=str(payload.get("priority", "normal")),
-        created_at_sec=_timestamp_sec(payload),
-        received_at_sec=now_sec,
-    )
+def validate_action_shape(intent: ActionIntent) -> None:
+    if not intent.command_id.strip():
+        raise ValueError("command_id must be non-empty")
+    if not intent.action.strip():
+        raise ValueError("action must be non-empty")
 
 
 class RateLimiter:
@@ -138,41 +72,43 @@ class SafetyValidator:
         intent: LocoIntent,
         robot_state: RobotStateSnapshot,
         now_sec: float,
-    ) -> SafetyDecision:
+    ) -> ValidationResult:
+        validate_intent_shape(intent)
         details: dict[str, bool] = {}
         if not self.config.safety["enabled"]:
             details["safety_enabled"] = False
-            return SafetyDecision.allow(details)
+            return ValidationResult.allow(details)
 
         for check in [
             self._check_robot_state(robot_state),
             self._check_mode("loco", robot_state),
-            self._check_command_freshness(intent.created_at_sec, now_sec),
+            self._check_command_freshness(time_to_sec(intent.created_at), now_sec),
             self._check_motion_limits(intent),
             self._check_velocity_continuity(intent, robot_state),
         ]:
             details.update(check.check_details or {})
             if not check.allowed:
-                return SafetyDecision.reject(check.reason or "safety check failed", details)
+                return ValidationResult.reject(check.reason or "safety check failed", details)
 
-        return SafetyDecision.allow(details)
+        return ValidationResult.allow(details)
 
     def validate_action(
         self,
         intent: ActionIntent,
         robot_state: RobotStateSnapshot,
         now_sec: float,
-    ) -> SafetyDecision:
+    ) -> ValidationResult:
+        validate_action_shape(intent)
         del now_sec
         details: dict[str, bool] = {}
         if intent.action in {"stop", "cancel"}:
             details["emergency_action"] = True
-            return SafetyDecision.allow(details)
+            return ValidationResult.allow(details)
 
         del robot_state
-        return SafetyDecision.reject(f"unsupported action: {intent.action}", details)
+        return ValidationResult.reject(f"unsupported action: {intent.action}", details)
 
-    def _check_robot_state(self, robot_state: RobotStateSnapshot) -> SafetyDecision:
+    def _check_robot_state(self, robot_state: RobotStateSnapshot) -> ValidationResult:
         details: dict[str, bool] = {}
         thresholds = self.config.health_thresholds
         max_age_ms = float(thresholds["max_lowstate_age_ms"])
@@ -183,14 +119,14 @@ class SafetyValidator:
 
         if robot_state.lowstate_age_ms is None:
             details["lowstate_fresh"] = False
-            return SafetyDecision.reject("lowstate unavailable", details)
+            return ValidationResult.reject("lowstate unavailable", details)
         details["lowstate_fresh"] = robot_state.lowstate_age_ms <= max_age_ms
         if not details["lowstate_fresh"]:
-            return SafetyDecision.reject(f"lowstate stale: age_ms={robot_state.lowstate_age_ms}", details)
+            return ValidationResult.reject(f"lowstate stale: age_ms={robot_state.lowstate_age_ms}", details)
 
         details["health_ok"] = robot_state.health_state == "ok"
         if not details["health_ok"]:
-            return SafetyDecision.reject(f"robot health not ok: {robot_state.health_state}", details)
+            return ValidationResult.reject(f"robot health not ok: {robot_state.health_state}", details)
 
         if robot_state.max_temperature is None:
             details["temperature_ok"] = not require_motor_temperature
@@ -198,8 +134,8 @@ class SafetyValidator:
             details["temperature_ok"] = robot_state.max_temperature < max_temperature
         if not details["temperature_ok"]:
             if robot_state.max_temperature is None:
-                return SafetyDecision.reject("motor temperature unavailable", details)
-            return SafetyDecision.reject(f"motor temperature too high: {robot_state.max_temperature}", details)
+                return ValidationResult.reject("motor temperature unavailable", details)
+            return ValidationResult.reject(f"motor temperature too high: {robot_state.max_temperature}", details)
 
         if robot_state.battery_voltage is None:
             details["battery_ok"] = not require_battery_voltage
@@ -207,10 +143,10 @@ class SafetyValidator:
             details["battery_ok"] = robot_state.battery_voltage >= min_battery_voltage
         if not details["battery_ok"]:
             if robot_state.battery_voltage is None:
-                return SafetyDecision.reject("battery voltage unavailable", details)
-            return SafetyDecision.reject(f"battery voltage too low: {robot_state.battery_voltage}", details)
+                return ValidationResult.reject("battery voltage unavailable", details)
+            return ValidationResult.reject(f"battery voltage too low: {robot_state.battery_voltage}", details)
 
-        return SafetyDecision.allow(details)
+        return ValidationResult.allow(details)
 
     def _policy_mode(self, robot_state: RobotStateSnapshot) -> str | None:
         if robot_state.mode:
@@ -219,18 +155,18 @@ class SafetyValidator:
             return None
         return str(self.config.safety["default_mode"])
 
-    def _check_mode(self, command_kind: str, robot_state: RobotStateSnapshot) -> SafetyDecision:
+    def _check_mode(self, command_kind: str, robot_state: RobotStateSnapshot) -> ValidationResult:
         mode = self._policy_mode(robot_state)
         details: dict[str, bool] = {}
         if mode is None:
             details["mode_available"] = False
-            return SafetyDecision.reject("robot mode unavailable", details)
+            return ValidationResult.reject("robot mode unavailable", details)
         details["mode_available"] = True
 
         restrictions = self.config.mode_restrictions.get(mode)
         if restrictions is None:
             details["mode_allowed"] = False
-            return SafetyDecision.reject(f"unsupported robot mode: {mode}", details)
+            return ValidationResult.reject(f"unsupported robot mode: {mode}", details)
 
         if command_kind == "loco":
             key = "allow_loco"
@@ -244,49 +180,54 @@ class SafetyValidator:
         allowed = bool(restrictions.get(key, False))
         details["mode_allowed"] = allowed
         if not allowed:
-            return SafetyDecision.reject(f"{command_kind} not allowed in mode: {mode}", details)
-        return SafetyDecision.allow(details)
+            return ValidationResult.reject(f"{command_kind} not allowed in mode: {mode}", details)
+        return ValidationResult.allow(details)
 
-    def _check_command_freshness(self, created_at_sec: float | None, now_sec: float) -> SafetyDecision:
+    def _check_command_freshness(self, created_at_sec: float | None, now_sec: float) -> ValidationResult:
         details: dict[str, bool] = {}
         if created_at_sec is None:
             if self.config.safety["strict_mode"] or self.config.safety["require_command_timestamp"]:
                 details["command_fresh"] = False
-                return SafetyDecision.reject("command timestamp missing", details)
+                return ValidationResult.reject("command timestamp missing", details)
             details["command_fresh"] = True
-            return SafetyDecision.allow(details)
+            return ValidationResult.allow(details)
 
         age_ms = (now_sec - created_at_sec) * 1000.0
         if age_ms < -50.0:
             details["command_fresh"] = False
-            return SafetyDecision.reject(f"command timestamp is in the future: age_ms={age_ms:.1f}", details)
+            return ValidationResult.reject(f"command timestamp is in the future: age_ms={age_ms:.1f}", details)
 
         timeout_ms = float(self.config.safety["command_timeout_ms"])
         details["command_fresh"] = age_ms <= timeout_ms
         if not details["command_fresh"]:
-            return SafetyDecision.reject(f"command expired: age_ms={age_ms:.1f}", details)
-        return SafetyDecision.allow(details)
+            return ValidationResult.reject(f"command expired: age_ms={age_ms:.1f}", details)
+        return ValidationResult.allow(details)
 
-    def _check_motion_limits(self, intent: LocoIntent) -> SafetyDecision:
+    def _check_motion_limits(self, intent: LocoIntent) -> ValidationResult:
         details: dict[str, bool] = {}
-        for field in ["vx", "vy", "vyaw", "duration_sec"]:
+        values = {
+            "vx": float(intent.vx),
+            "vy": float(intent.vy),
+            "vyaw": float(intent.vyaw),
+            "duration_sec": duration_to_sec(intent.duration),
+        }
+        for field, value in values.items():
             limits = self.config.motion_limits[field]
-            value = float(getattr(intent, field))
             allowed = float(limits["min"]) <= value <= float(limits["max"])
             details[f"{field}_range"] = allowed
             if not allowed:
-                return SafetyDecision.reject(f"{field} out of range: {value}", details)
-        return SafetyDecision.allow(details)
+                return ValidationResult.reject(f"{field} out of range: {value}", details)
+        return ValidationResult.allow(details)
 
     def _check_velocity_continuity(
         self,
         intent: LocoIntent,
         robot_state: RobotStateSnapshot,
-    ) -> SafetyDecision:
+    ) -> ValidationResult:
         details: dict[str, bool] = {}
         if not self.config.velocity_continuity["enabled"]:
             details["velocity_continuity"] = True
-            return SafetyDecision.allow(details)
+            return ValidationResult.allow(details)
 
         for axis in ["vx", "vy", "vyaw"]:
             current = float(robot_state.current_velocity.get(axis, 0.0))
@@ -295,8 +236,8 @@ class SafetyValidator:
             allowed = abs(target - current) <= limit
             details[f"{axis}_continuity"] = allowed
             if not allowed:
-                return SafetyDecision.reject(
+                return ValidationResult.reject(
                     f"{axis} velocity step too large: current={current}, target={target}",
                     details,
                 )
-        return SafetyDecision.allow(details)
+        return ValidationResult.allow(details)

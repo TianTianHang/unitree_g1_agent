@@ -9,7 +9,7 @@
   <buildtool_depend>ament_python</buildtool_depend>
 
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>g1_agent_msgs</exec_depend>
   <!-- faster-whisper and torch are Python runtime dependencies declared in setup.py. -->
 
   <test_depend>pytest</test_depend>

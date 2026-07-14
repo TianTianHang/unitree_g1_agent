@@ -1,28 +1,12 @@
 """Tests for asr_node.node - AsrNode pipeline wiring."""
-import json
 import queue
-import sys
 import threading
-import types
 from unittest.mock import MagicMock
 
+from builtin_interfaces.msg import Time
+from g1_agent_msgs.msg import VoiceEvent
+
 from asr_node.config import AsrNodeConfig
-
-
-class String:
-    def __init__(self):
-        self.data = ""
-
-
-def _install_fake_ros_modules():
-    std_msgs = types.ModuleType("std_msgs")
-    std_msgs_msg = types.ModuleType("std_msgs.msg")
-    std_msgs_msg.String = String
-    sys.modules.setdefault("std_msgs", std_msgs)
-    sys.modules.setdefault("std_msgs.msg", std_msgs_msg)
-
-
-_install_fake_ros_modules()
 
 from asr_node.node import AsrNode, _STOP_SENTINEL
 
@@ -61,8 +45,9 @@ def _make_uninitialized_node(config: AsrNodeConfig, mock_pub: MagicMock) -> AsrN
     node = AsrNode.__new__(AsrNode)
     node.node = MagicMock()
     node.node.get_logger.return_value = MagicMock()
+    node.node.get_clock.return_value.now.return_value.to_msg.return_value = Time(sec=1)
     node.config = config
-    node.msg = {"String": String}
+    node.msg = {"VoiceEvent": VoiceEvent}
     node._msg_counter = 0
     node._lock = threading.Lock()
     node._asr_pub = mock_pub
@@ -84,8 +69,8 @@ def test_transcribe_and_publish_empty_text_skipped():
     mock_pub.publish.assert_not_called()
 
 
-def test_transcribe_and_publish_formats_json():
-    """Successful transcription publishes correct JSON."""
+def test_transcribe_and_publish_builds_voice_event():
+    """Successful transcription publishes a typed voice event."""
     mock_pub = MagicMock()
     node = _make_uninitialized_node(_make_config(), mock_pub)
     node._engine = MagicMock()
@@ -97,14 +82,16 @@ def test_transcribe_and_publish_formats_json():
 
     node._transcribe_and_publish(seg)
 
-    assert mock_pub.publish.call_count == 1
-    msg = mock_pub.publish.call_args[0][0]
-    payload = json.loads(msg.data)
-    assert payload["text"] == "向前走"
-    assert payload["is_final"] is True
-    assert payload["source"] == "custom_asr"
-    assert payload["language"] == "zh"
-    assert payload["index"] == 1
+    msg = mock_pub.publish.call_args.args[0]
+    assert msg.event_type == msg.EVENT_ASR
+    assert msg.text == "向前走"
+    assert msg.source == "custom_asr"
+    assert msg.language == "zh"
+    assert msg.is_final is True
+    assert msg.has_sequence_id is True
+    assert msg.sequence_id == 1
+    assert msg.has_confidence is False
+    assert msg.stamp.sec == 1
 
 
 def test_transcribe_and_publish_index_increments():
@@ -122,17 +109,14 @@ def test_transcribe_and_publish_index_increments():
     node._transcribe_and_publish(seg)
     node._transcribe_and_publish(seg)
 
-    payloads = [
-        json.loads(mock_pub.publish.call_args_list[i][0][0].data)
-        for i in range(3)
-    ]
-    assert payloads[0]["index"] == 1
-    assert payloads[1]["index"] == 2
-    assert payloads[2]["index"] == 3
+    messages = [mock_pub.publish.call_args_list[i].args[0] for i in range(3)]
+    assert messages[0].sequence_id == 1
+    assert messages[1].sequence_id == 2
+    assert messages[2].sequence_id == 3
 
 
-def test_transcribe_and_publish_no_confidence_field():
-    """Published JSON does not contain a confidence field."""
+def test_transcribe_and_publish_marks_confidence_absent():
+    """Published event marks confidence absent when the engine has none."""
     mock_pub = MagicMock()
     node = _make_uninitialized_node(_make_config(), mock_pub)
     node._engine = MagicMock()
@@ -143,8 +127,9 @@ def test_transcribe_and_publish_no_confidence_field():
     seg = SpeechSegment(pcm_int16=b"\x00" * 3200, sample_rate=16000, duration_ms=100)
 
     node._transcribe_and_publish(seg)
-    payload = json.loads(mock_pub.publish.call_args[0][0].data)
-    assert "confidence" not in payload
+    msg = mock_pub.publish.call_args.args[0]
+    assert msg.has_confidence is False
+    assert msg.confidence == 0.0
 
 
 def test_process_loop_flushes_on_sentinel():

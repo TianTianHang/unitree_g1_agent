@@ -1,6 +1,9 @@
 import json
 import queue
 
+from builtin_interfaces.msg import Time
+
+from g1_agent_msgs.msg import RobotStateSummary, SafetyStatus, VoiceEvent
 from voice_bridge_debug.config import DebugPanelConfig
 from voice_bridge_debug.ros_node import DebugBridgeNode
 from voice_bridge_debug.state import PanelState
@@ -16,11 +19,14 @@ class FakePublisher:
         self.messages = []
 
     def publish(self, msg):
-        self.messages.append(msg.data)
+        self.messages.append(msg)
 
 
 class FakeClockNow:
     nanoseconds = 1_000_000_000
+
+    def to_msg(self):
+        return Time(sec=1)
 
 
 class FakeClock:
@@ -31,15 +37,19 @@ class FakeClock:
 class FakeNode:
     def __init__(self):
         self.publishers = {}
+        self.publisher_types = {}
+        self.subscription_types = {}
         self.subscriptions = []
         self.timers = []
 
     def create_publisher(self, msg_type, topic, depth):
         pub = FakePublisher()
         self.publishers[topic] = pub
+        self.publisher_types[topic] = msg_type
         return pub
 
     def create_subscription(self, msg_type, topic, callback, depth):
+        self.subscription_types[topic] = msg_type
         self.subscriptions.append((topic, callback))
         return callback
 
@@ -51,29 +61,51 @@ class FakeNode:
         return FakeClock()
 
 
-def test_drain_asr_queue_publishes_json(monkeypatch):
-    from voice_bridge_debug import ros_node as ros_node_module
-
-    monkeypatch.setattr(ros_node_module, "_load_ros_messages", lambda: {"String": FakeString, "DiagnosticArray": object})
+def test_debug_asr_queue_publishes_voice_event():
     config = DebugPanelConfig.default()
     q = queue.Queue()
     q.put({"text": "小宇向前", "confidence": 0.9, "is_final": True, "source": "debug"})
-    node = DebugBridgeNode(FakeNode(), config, PanelState(), q, lambda message: None)
+    fake_node = FakeNode()
+    bridge = DebugBridgeNode(fake_node, config, PanelState(), q, lambda message: None)
 
-    node.drain_asr_queue()
+    bridge.drain_asr_queue()
 
-    payload = json.loads(node.asr_pub.messages[-1])
-    assert payload["text"] == "小宇向前"
-    assert payload["confidence"] == 0.9
-    assert payload["is_final"] is True
-    assert payload["source"] == "debug"
-    assert "stamp" in payload
+    msg = fake_node.publishers["/g1/audio/asr"].messages[-1]
+    assert fake_node.publisher_types["/g1/audio/asr"] is VoiceEvent
+    assert msg.event_type == msg.EVENT_ASR
+    assert msg.text == "小宇向前"
+    assert msg.has_confidence is True
+    assert msg.confidence == 0.9
+    assert msg.stamp == Time(sec=1)
 
 
-def test_voice_debug_agent_result_updates_agent_result(monkeypatch):
-    from voice_bridge_debug import ros_node as ros_node_module
+def test_typed_robot_and_safety_state_are_stored_without_json_wrapper():
+    fake_node = FakeNode()
+    state = PanelState()
+    bridge = DebugBridgeNode(
+        fake_node,
+        DebugPanelConfig.default(),
+        state,
+        queue.Queue(),
+        lambda message: None,
+    )
 
-    monkeypatch.setattr(ros_node_module, "_load_ros_messages", lambda: {"String": FakeString, "DiagnosticArray": object})
+    bridge.on_robot_mode(
+        RobotStateSummary(
+            stamp=Time(sec=1),
+            mode=RobotStateSummary.MODE_SPORT_API_LOCO,
+            control_owner=RobotStateSummary.OWNER_INTERNAL,
+        )
+    )
+    bridge.on_safety_state(SafetyStatus(node_name="safety_control", enabled=True))
+
+    assert state.robot_mode["mode"] == "sport_api_loco"
+    assert state.safety_state["enabled"] is True
+    assert fake_node.subscription_types["/g1/state/mode"] is RobotStateSummary
+    assert fake_node.subscription_types["/g1/state/safety"] is SafetyStatus
+
+
+def test_voice_debug_agent_result_updates_agent_result():
     messages = []
     state = PanelState(notify_web=messages.append)
     node = DebugBridgeNode(FakeNode(), DebugPanelConfig.default(), state, queue.Queue(), messages.append)
@@ -95,10 +127,7 @@ def test_voice_debug_agent_result_updates_agent_result(monkeypatch):
     assert messages[-1]["type"] == "agent_result"
 
 
-def test_voice_debug_agent_started_marks_current_result_pending(monkeypatch):
-    from voice_bridge_debug import ros_node as ros_node_module
-
-    monkeypatch.setattr(ros_node_module, "_load_ros_messages", lambda: {"String": FakeString, "DiagnosticArray": object})
+def test_voice_debug_agent_started_marks_current_result_pending():
     messages = []
     state = PanelState(notify_web=messages.append)
     state.set_agent_result(

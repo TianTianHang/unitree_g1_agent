@@ -27,7 +27,16 @@ setup(
         (f"share/{package_name}/config", glob("config/*.yaml")),
         (f"share/{package_name}/launch", glob("launch/*.py")),
     ],
-    install_requires=["setuptools", "PyYAML", "fastapi>=0.100", "uvicorn[standard]>=0.20"],
+    install_requires=[
+        "setuptools",
+        "PyYAML==6.0.3",
+        "fastapi==0.115.12",
+        "starlette==0.46.2",
+        "uvicorn[standard]==0.34.3",
+    ],
+    extras_require={
+        "test": ["pytest==8.3.5", "httpx==0.28.1"],
+    },
     zip_safe=True,
     maintainer="unitree_g1_agent",
     maintainer_email="dev@example.local",

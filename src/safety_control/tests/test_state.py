@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
-from safety_control.state import RobotStateTracker, extract_mode, extract_velocity, normalize_mode
+from builtin_interfaces.msg import Time
+
+from g1_agent_msgs.msg import RobotStateSummary
+from safety_control.state import RobotStateTracker, normalize_mode
 
 
 def test_normalize_mode_aliases():
@@ -9,27 +12,18 @@ def test_normalize_mode_aliases():
     assert normalize_mode("user") == "user_ctrl"
 
 
-def test_extract_mode_from_json_payload():
-    assert extract_mode('{"control_owner": "user"}') == "user_ctrl"
-    assert extract_mode('{"mode": "sport_api_loco"}') == "sport_api_loco"
-    assert extract_mode('{"rpy": [0, 0, 0]}') is None
-
-
-def test_extract_velocity_from_common_shapes():
-    assert extract_velocity({"velocity": [0.1, 0.0, 0.2]}) == {"vx": 0.1, "vy": 0.0, "vyaw": 0.2}
-    assert extract_velocity({"current_velocity": {"x": 0.1, "y": 0.2, "z": 0.3}}) == {
-        "vx": 0.1,
-        "vy": 0.2,
-        "vyaw": 0.3,
-    }
-
-
 def test_state_tracker_builds_snapshot_from_lowstate_and_health():
     tracker = RobotStateTracker(state_timeout_ms=300)
-    tracker.update_from_lowstate_text(
-        '{"stamp_sec": 10.0, "motor_count": 35, "max_temperature_c": 42.5, "velocity": [0.1, 0.0, 0.2]}',
-        now_sec=10.0,
+    summary = RobotStateSummary(
+        stamp=Time(sec=10),
+        mode=RobotStateSummary.MODE_SPORT_API_LOCO,
+        motor_count=35,
+        has_max_temperature=True,
+        max_temperature_c=42.5,
     )
+    summary.velocity.linear.x = 0.1
+    summary.velocity.angular.z = 0.2
+    tracker.update_from_summary(summary, now_sec=10.0)
 
     status = SimpleNamespace(
         level=0,
@@ -45,6 +39,7 @@ def test_state_tracker_builds_snapshot_from_lowstate_and_health():
 
     assert snapshot.health_state == "ok"
     assert snapshot.lowstate_age_ms == 50
+    assert snapshot.mode == "sport_api_loco"
     assert snapshot.motor_count == 35
     assert snapshot.max_temperature == 42.5
     assert snapshot.current_velocity == {"vx": 0.1, "vy": 0.0, "vyaw": 0.2}
@@ -52,7 +47,7 @@ def test_state_tracker_builds_snapshot_from_lowstate_and_health():
 
 def test_state_tracker_accepts_ros_byte_diagnostic_level():
     tracker = RobotStateTracker(state_timeout_ms=300)
-    tracker.update_from_lowstate_text('{"stamp_sec": 10.0}', now_sec=10.0)
+    tracker.update_from_summary(RobotStateSummary(stamp=Time(sec=10)), now_sec=10.0)
 
     tracker.update_from_health(
         SimpleNamespace(status=[SimpleNamespace(level=b"\x00", message="ok", values=[])]),
@@ -69,8 +64,13 @@ def test_state_tracker_accepts_ros_byte_diagnostic_level():
 
 def test_state_tracker_uses_lowstate_producer_timestamp_for_age():
     tracker = RobotStateTracker(state_timeout_ms=300)
-    tracker.update_from_lowstate_text(
-        '{"stamp_sec": 9.5, "motor_count": 35, "max_temperature_c": 42.5}',
+    tracker.update_from_summary(
+        RobotStateSummary(
+            stamp=Time(sec=9, nanosec=500_000_000),
+            motor_count=35,
+            has_max_temperature=True,
+            max_temperature_c=42.5,
+        ),
         now_sec=10.0,
     )
 

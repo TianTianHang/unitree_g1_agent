@@ -1,11 +1,20 @@
 from __future__ import annotations
 
-import json
+import math
 import queue
-from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from voice_bridge_debug.config import DebugPanelConfig
+from voice_bridge_debug.ros_converters import (
+    action_intent_to_dict,
+    loco_intent_to_dict,
+    robot_state_to_dict,
+    safety_decision_to_dict,
+    safety_status_to_dict,
+    validated_action_to_dict,
+    validated_loco_to_dict,
+)
 from voice_bridge_debug.state import PanelState, normalize_health, parse_json_topic
 
 
@@ -13,7 +22,29 @@ def _load_ros_messages():
     from diagnostic_msgs.msg import DiagnosticArray
     from std_msgs.msg import String
 
-    return {"DiagnosticArray": DiagnosticArray, "String": String}
+    from g1_agent_msgs.msg import (
+        ActionIntent,
+        LocoIntent,
+        RobotStateSummary,
+        SafetyDecision,
+        SafetyStatus,
+        ValidatedActionCommand,
+        ValidatedLocoCommand,
+        VoiceEvent,
+    )
+
+    return {
+        "ActionIntent": ActionIntent,
+        "DiagnosticArray": DiagnosticArray,
+        "LocoIntent": LocoIntent,
+        "RobotStateSummary": RobotStateSummary,
+        "SafetyDecision": SafetyDecision,
+        "SafetyStatus": SafetyStatus,
+        "String": String,
+        "ValidatedActionCommand": ValidatedActionCommand,
+        "ValidatedLocoCommand": ValidatedLocoCommand,
+        "VoiceEvent": VoiceEvent,
+    }
 
 
 class DebugBridgeNode:
@@ -32,22 +63,40 @@ class DebugBridgeNode:
         self.notify_web = notify_web
         self.msg = _load_ros_messages()
         topics = config.topics
-        self.asr_pub = node.create_publisher(self.msg["String"], topics["asr"], 10)
+        self.asr_pub = node.create_publisher(self.msg["VoiceEvent"], topics["asr"], 10)
         node.create_subscription(self.msg["String"], topics["voice_state"], self.on_voice_state, 10)
         node.create_subscription(self.msg["String"], topics["voice_debug_events"], self.on_voice_debug_event, 10)
-        node.create_subscription(self.msg["String"], topics["robot_mode"], self.on_robot_mode, 10)
-        node.create_subscription(self.msg["String"], topics["safety_state"], self.on_safety_state, 10)
-        node.create_subscription(self.msg["DiagnosticArray"], topics["health"], self.on_health, 10)
         node.create_subscription(
-            self.msg["String"],
-            topics["voice_cmd_loco"],
-            lambda msg: self.on_string_event("cmd_loco", "command_published", msg),
+            self.msg["RobotStateSummary"],
+            topics["robot_mode"],
+            self.on_robot_mode,
             10,
         )
         node.create_subscription(
-            self.msg["String"],
+            self.msg["SafetyStatus"],
+            topics["safety_state"],
+            self.on_safety_state,
+            10,
+        )
+        node.create_subscription(self.msg["DiagnosticArray"], topics["health"], self.on_health, 10)
+        node.create_subscription(
+            self.msg["LocoIntent"],
+            topics["voice_cmd_loco"],
+            lambda msg: self.on_typed_event(
+                "cmd_loco",
+                "command_published",
+                loco_intent_to_dict(msg),
+            ),
+            10,
+        )
+        node.create_subscription(
+            self.msg["ActionIntent"],
             topics["voice_cmd_action"],
-            lambda msg: self.on_string_event("cmd_action", "command_published", msg),
+            lambda msg: self.on_typed_event(
+                "cmd_action",
+                "command_published",
+                action_intent_to_dict(msg),
+            ),
             10,
         )
         node.create_subscription(
@@ -63,21 +112,33 @@ class DebugBridgeNode:
             10,
         )
         node.create_subscription(
-            self.msg["String"],
+            self.msg["ValidatedLocoCommand"],
             topics["safe_cmd_loco"],
-            lambda msg: self.on_string_event("safe_cmd_loco", "safe_command_published", msg),
+            lambda msg: self.on_typed_event(
+                "safe_cmd_loco",
+                "safe_command_published",
+                validated_loco_to_dict(msg),
+            ),
             10,
         )
         node.create_subscription(
-            self.msg["String"],
+            self.msg["ValidatedActionCommand"],
             topics["safe_cmd_stop"],
-            lambda msg: self.on_string_event("safe_cmd_stop", "safe_stop_published", msg),
+            lambda msg: self.on_typed_event(
+                "safe_cmd_stop",
+                "safe_stop_published",
+                validated_action_to_dict(msg),
+            ),
             10,
         )
         node.create_subscription(
-            self.msg["String"],
+            self.msg["SafetyDecision"],
             topics["safety_decisions"],
-            lambda msg: self.on_string_event("safety_decision", "safety_decision", msg),
+            lambda msg: self.on_typed_event(
+                "safety_decision",
+                "safety_decision",
+                safety_decision_to_dict(msg),
+            ),
             10,
         )
         node.create_timer(0.05, self.drain_asr_queue)
@@ -91,10 +152,23 @@ class DebugBridgeNode:
                 request = self.asr_publish_queue.get_nowait()
             except queue.Empty:
                 return
-            payload = dict(request)
-            payload["stamp"] = datetime.now(timezone.utc).isoformat()
-            msg = self.msg["String"]()
-            msg.data = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            msg = self.msg["VoiceEvent"](
+                stamp=self.node.get_clock().now().to_msg(),
+                source=str(request.get("source", self.config.defaults["asr_source"])),
+                event_type=self.msg["VoiceEvent"].EVENT_ASR,
+                text=str(request.get("text", "")),
+                is_final=bool(request.get("is_final", self.config.defaults["asr_is_final"])),
+                language=str(request.get("language", "")),
+            )
+            confidence = request.get("confidence")
+            if (
+                not isinstance(confidence, bool)
+                and isinstance(confidence, int | float)
+                and math.isfinite(float(confidence))
+                and 0.0 <= float(confidence) <= 1.0
+            ):
+                msg.has_confidence = True
+                msg.confidence = float(confidence)
             self.asr_pub.publish(msg)
 
     def on_voice_state(self, msg) -> None:
@@ -163,10 +237,10 @@ class DebugBridgeNode:
             )
 
     def on_robot_mode(self, msg) -> None:
-        self.state.set_robot_state(robot_mode=parse_json_topic(msg.data))
+        self.state.set_robot_state(robot_mode=robot_state_to_dict(msg))
 
     def on_safety_state(self, msg) -> None:
-        self.state.set_robot_state(safety_state=parse_json_topic(msg.data))
+        self.state.set_robot_state(safety_state=safety_status_to_dict(msg))
 
     def on_health(self, msg) -> None:
         stale_after = self.config.timeline["state_timeout_ms"] / 1000.0
@@ -174,3 +248,6 @@ class DebugBridgeNode:
 
     def on_string_event(self, source: str, kind: str, msg) -> None:
         self.state.push_event(source, kind, parse_json_topic(msg.data), timestamp=self._now_sec())
+
+    def on_typed_event(self, source: str, kind: str, data: dict[str, Any]) -> None:
+        self.state.push_event(source, kind, data, timestamp=self._now_sec())

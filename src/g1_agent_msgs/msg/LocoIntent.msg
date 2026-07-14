@@ -1,0 +1,9 @@
+builtin_interfaces/Time created_at
+string source
+string session_id
+string command_id
+string text
+float64 vx
+float64 vy
+float64 vyaw
+builtin_interfaces/Duration duration

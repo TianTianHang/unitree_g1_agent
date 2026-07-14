@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -8,7 +7,6 @@ from typing import Any
 
 from voice_bridge.config import VoiceBridgeConfig
 from voice_bridge.internal_types import AsrEvent, SessionDecision
-
 
 PUNCTUATION_PREFIX = "，,。.!！?？:：;； "
 
@@ -18,34 +16,10 @@ def new_session_id(now_sec: float) -> str:
     return dt.strftime("%Y%m%dT%H%M%S.%fZ")
 
 
-def parse_asr_event(raw_text: str) -> AsrEvent:
-    text = raw_text.strip()
-    if not text:
-        return AsrEvent(text="")
-
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return AsrEvent(text=text)
-
-    if not isinstance(payload, dict):
-        return AsrEvent(text=text)
-
-    event_text = str(payload.get("text", "")).strip()
-    confidence = payload.get("confidence")
-    if confidence is not None:
-        try:
-            confidence = float(confidence)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("confidence must be numeric") from exc
-
-    return AsrEvent(
-        text=event_text,
-        confidence=confidence,
-        is_final=bool(payload.get("is_final", True)),
-        source=str(payload.get("source", "unknown")),
-        stamp=payload.get("stamp"),
-    )
+def parse_asr_event(event: AsrEvent) -> AsrEvent:
+    if not isinstance(event, AsrEvent):
+        raise TypeError("ASR event must be an AsrEvent")
+    return event
 
 
 def _contains_any(text: str, words: list[str]) -> bool:

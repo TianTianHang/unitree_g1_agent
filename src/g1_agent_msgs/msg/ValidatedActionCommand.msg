@@ -1,0 +1,3 @@
+g1_agent_msgs/ActionIntent intent
+builtin_interfaces/Time validated_at
+g1_agent_msgs/SafetyDecision validation

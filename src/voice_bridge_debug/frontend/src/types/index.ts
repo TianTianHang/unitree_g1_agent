@@ -1,9 +1,3 @@
-export interface ParsedTopicState<T> {
-  raw?: string;
-  parse_error?: string;
-  data?: T;
-}
-
 export interface RobotModeFields {
   mode?: string | null;
   control_owner?: string | null;
@@ -13,7 +7,7 @@ export interface RobotModeFields {
   source?: string | null;
 }
 
-export type RobotModeState = ParsedTopicState<RobotModeFields>;
+export type RobotModeState = RobotModeFields;
 
 export interface SafetyFields {
   enabled?: boolean;
@@ -25,7 +19,7 @@ export interface SafetyFields {
   reject_count?: number;
 }
 
-export type SafetyState = ParsedTopicState<SafetyFields>;
+export type SafetyState = SafetyFields;
 
 export interface HealthState {
   summary: "ok" | "warn" | "error" | "stale" | "unknown";

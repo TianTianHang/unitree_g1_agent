@@ -4,14 +4,9 @@ import json
 import threading
 from typing import Any
 
-from safety_control.internal_types import LocoIntent, RobotStateSnapshot
-
-
-def _decode_json_object(raw_json: str) -> dict[str, Any]:
-    payload = json.loads(raw_json)
-    if not isinstance(payload, dict):
-        raise ValueError("payload must be a JSON object")
-    return payload
+from g1_agent_msgs.msg import LocoIntent, RobotStateSummary
+from safety_control.internal_types import RobotStateSnapshot
+from safety_control.validator import duration_to_sec, time_to_sec
 
 
 def _as_float(value: Any) -> float | None:
@@ -40,7 +35,7 @@ def _decode_value(value: str) -> Any:
 def _diagnostic_level_to_int(value: Any) -> int:
     if isinstance(value, int):
         return value
-    if isinstance(value, (bytes, bytearray)):
+    if isinstance(value, bytes | bytearray):
         if len(value) == 1:
             return value[0]
         return int(value)
@@ -69,52 +64,6 @@ def normalize_mode(value: Any) -> str | None:
     return aliases.get(key, key)
 
 
-def extract_mode(raw_json: str) -> str | None:
-    text = raw_json.strip()
-    if not text:
-        return None
-    try:
-        payload = _decode_json_object(text)
-    except (json.JSONDecodeError, ValueError):
-        return normalize_mode(text)
-
-    for field in ["mode", "robot_mode", "control_mode", "default_mode"]:
-        if field in payload:
-            return normalize_mode(payload[field])
-
-    owner = payload.get("control_owner") or payload.get("owner")
-    if owner is not None:
-        return normalize_mode(owner)
-
-    return None
-
-
-def extract_velocity(payload: dict[str, Any]) -> dict[str, float] | None:
-    for field in ["velocity", "current_velocity", "twist"]:
-        value = payload.get(field)
-        if isinstance(value, dict):
-            vx = _as_float(value.get("vx", value.get("x")))
-            vy = _as_float(value.get("vy", value.get("y")))
-            vyaw = _as_float(value.get("vyaw", value.get("yaw", value.get("z"))))
-            if vx is not None and vy is not None and vyaw is not None:
-                return {"vx": vx, "vy": vy, "vyaw": vyaw}
-        if isinstance(value, list) and len(value) >= 3:
-            vx = _as_float(value[0])
-            vy = _as_float(value[1])
-            vyaw = _as_float(value[2])
-            if vx is not None and vy is not None and vyaw is not None:
-                return {"vx": vx, "vy": vy, "vyaw": vyaw}
-
-    if all(field in payload for field in ["vx", "vy", "vyaw"]):
-        vx = _as_float(payload.get("vx"))
-        vy = _as_float(payload.get("vy"))
-        vyaw = _as_float(payload.get("vyaw"))
-        if vx is not None and vy is not None and vyaw is not None:
-            return {"vx": vx, "vy": vy, "vyaw": vyaw}
-
-    return None
-
-
 class RobotStateTracker:
     def __init__(self, state_timeout_ms: int):
         self.state_timeout_ms = int(state_timeout_ms)
@@ -130,36 +79,24 @@ class RobotStateTracker:
         self._max_temperature: float | None = None
         self._battery_voltage: float | None = None
 
-    def update_from_mode_text(self, raw_json: str) -> None:
-        mode = extract_mode(raw_json)
-        with self._lock:
-            self._mode = mode
-
-    def update_from_lowstate_text(self, raw_json: str, now_sec: float) -> None:
-        payload = _decode_json_object(raw_json)
-        stamp_sec = _as_float(payload.get("stamp_sec"))
+    def update_from_summary(self, msg: RobotStateSummary, now_sec: float) -> None:
+        stamp_sec = time_to_sec(msg.stamp)
+        mode = normalize_mode(msg.mode)
         with self._lock:
             self._last_lowstate_sec = stamp_sec if stamp_sec is not None else now_sec
-            mode = extract_mode(raw_json)
             if mode is not None:
                 self._mode = mode
-
-            velocity = extract_velocity(payload)
-            if velocity is not None:
-                self._current_velocity = velocity
-                self._command_until_sec = 0.0
-
-            motor_count = _as_int(payload.get("motor_count"))
-            if motor_count is not None:
-                self._motor_count = motor_count
-
-            temperature = _as_float(payload.get("max_temperature_c", payload.get("max_temperature")))
-            if temperature is not None:
-                self._max_temperature = temperature
-
-            battery = _as_float(payload.get("battery_voltage", payload.get("voltage")))
-            if battery is not None:
-                self._battery_voltage = battery
+            self._current_velocity = {
+                "vx": float(msg.velocity.linear.x),
+                "vy": float(msg.velocity.linear.y),
+                "vyaw": float(msg.velocity.angular.z),
+            }
+            self._command_until_sec = 0.0
+            self._motor_count = int(msg.motor_count)
+            self._max_temperature = (
+                float(msg.max_temperature_c) if msg.has_max_temperature else None
+            )
+            self._battery_voltage = float(msg.battery_voltage) if msg.has_battery_voltage else None
 
     def update_from_health(self, msg: object, now_sec: float) -> None:
         statuses = list(getattr(msg, "status", []))
@@ -199,7 +136,7 @@ class RobotStateTracker:
     def record_loco_command(self, intent: LocoIntent, now_sec: float) -> None:
         with self._lock:
             self._current_velocity = {"vx": intent.vx, "vy": intent.vy, "vyaw": intent.vyaw}
-            self._command_until_sec = now_sec + max(0.0, intent.duration_sec)
+            self._command_until_sec = now_sec + max(0.0, duration_to_sec(intent.duration))
 
     def record_stop(self, now_sec: float) -> None:
         with self._lock:
