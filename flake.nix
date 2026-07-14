@@ -16,9 +16,6 @@
 
       # 导入独立的包定义
       callPackage = pkgs.callPackage;
-      systemPytest = pkgs.writeShellScriptBin "pytest" ''
-        exec /usr/bin/python3 -m pytest "$@"
-      '';
     in {
       packages.${system} = {
         # 从独立文件导入包
@@ -37,7 +34,6 @@
             gcc
             ninja
             git
-            systemPytest
           ];
 
           inputsFrom = [
@@ -83,6 +79,9 @@
             echo "Build commands:"
             echo "  nix build .#unitree-sdk2    - Build SDK2 package"
             echo "  nix build .#unitree-ros2     - Build ROS2 package"
+            echo "  make bootstrap               - Create the Python 3.10 uv environment"
+            echo "  make build                   - Build the ROS workspace"
+            echo "  make test                    - Run unit tests"
             echo "=================================="
           '';
         };
