@@ -1,5 +1,7 @@
 # Unitree G1 Agent
 
+TextOp 文本动作 Backend 的重写设计见 [`docs/textop_backend.md`](docs/textop_backend.md)。
+
 面向 Unitree G1 的 ROS 2 Humble 控制栈。ASR 事件先由 `voice_bridge`
 转换为强类型运动意图，再经过 `safety_control` 校验；只有
 `ValidatedLocoCommand` 或 `ValidatedActionCommand` 能进入 `g1_interface`
@@ -76,3 +78,17 @@ ros2 launch voice_bridge voice_bridge.launch.py
 当前 topic 类型、字段、单位和允许保留 JSON 的边界见
 [`docs/data_contracts.md`](docs/data_contracts.md)。调试面板使用说明见
 [`docs/voice_bridge_debug_panel.md`](docs/voice_bridge_debug_panel.md)。
+
+## 低层策略接入边界
+
+Text-to-motion、motion tracking 和端到端策略不得直接发布 `/lowcmd`。策略后端发布
+29 路 `LowLevelCommandCandidate`，并持有由 motion manager 分配的短期 lease；
+`low_level_guard` 是唯一生成 35 槽 `unitree_hg/LowCmd`、填充机器人模式和 CRC 的节点。
+
+```bash
+ros2 launch low_level_guard low_level_guard.launch.py
+```
+
+当前 guard 在 lease、candidate 或 lowstate 过期时停止发布。真机使用前仍需为目标固件验证
+明确的 hold/damping 退出策略。详细说明见
+[`docs/low_level_guard.md`](docs/low_level_guard.md)。

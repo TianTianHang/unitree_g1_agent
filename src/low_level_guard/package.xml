@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>low_level_guard</name>
+  <version>0.1.0</version>
+  <description>Validated G1 low-level candidate to Unitree LowCmd gateway.</description>
+  <maintainer email="2450804878@qq.com">unitree_g1_agent</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>g1_agent_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>unitree_hg</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

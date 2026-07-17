@@ -1,0 +1,10 @@
+builtin_interfaces/Time stamp
+string backend_id
+string model_id
+string request_id
+string lease_id
+uint64 sequence_id
+builtin_interfaces/Duration valid_for
+string robot_profile
+string control_profile
+g1_agent_msgs/JointMotorCommand[29] motors

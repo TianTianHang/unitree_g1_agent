@@ -1,0 +1,11 @@
+string request_id
+uint32 segment_index
+uint64 start_frame
+float32 dt
+bool reset
+bool end_of_motion
+uint32 frame_count
+float32[] joint_position
+float32[] joint_velocity
+float32[] anchor_position
+float32[] anchor_orientation_wxyz

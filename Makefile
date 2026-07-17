@@ -49,6 +49,9 @@ test: build
 		for test_path in $(PYTEST_PATHS); do \
 			$(UV_RUN) python -m pytest -q "$$test_path"; \
 		done
+	@$(ROS_SETUP); source install/setup.bash; \
+		colcon test --packages-select low_level_guard --event-handlers console_direct+; \
+		colcon test-result --test-result-base build/low_level_guard/test_results --verbose
 
 test-integration: build
 	@$(ROS_SETUP); source install/setup.bash; colcon test --packages-select g1_system_tests --event-handlers console_direct+

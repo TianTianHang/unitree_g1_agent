@@ -14,7 +14,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SafetyDecision.msg"
   "msg/ValidatedLocoCommand.msg"
   "msg/ValidatedActionCommand.msg"
+  "msg/JointMotorCommand.msg"
+  "msg/LowLevelCommandCandidate.msg"
+  "msg/LowLevelControlLease.msg"
+  "msg/MotionReferenceSegment.msg"
   "msg/SafetyStatus.msg"
+  "action/ExecuteMotion.action"
   DEPENDENCIES builtin_interfaces geometry_msgs
 )
 

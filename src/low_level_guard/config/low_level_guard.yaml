@@ -1,0 +1,22 @@
+low_level_guard_node:
+  ros__parameters:
+    publish_hz: 500.0
+    robot_profile: g1_29dof_unitree_v1
+    control_profile: textop_tracker_v1
+    mode_pr: 0
+    topics:
+      candidate: /g1/low_level/candidate
+      lease: /g1/low_level/lease
+      lowstate: /lowstate
+      lowcmd: /lowcmd
+      diagnostics: /g1/low_level_guard/diagnostics
+    limits:
+      max_lease_sec: 30.0
+      max_candidate_valid_sec: 0.2
+      lowstate_timeout_sec: 0.1
+      max_abs_q_rad: 6.5
+      max_abs_dq_rad_s: 40.0
+      max_abs_tau_nm: 160.0
+      max_kp: 500.0
+      max_kd: 20.0
+      max_position_error_rad: 1.0

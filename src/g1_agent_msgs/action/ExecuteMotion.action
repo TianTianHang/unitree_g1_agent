@@ -1,0 +1,11 @@
+string request_id
+string backend_id
+string prompt
+builtin_interfaces/Duration duration
+---
+bool success
+string reason
+---
+string state
+uint64 generated_frames
+uint64 executed_frames
