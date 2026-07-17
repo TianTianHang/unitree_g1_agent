@@ -105,7 +105,25 @@ kp, kd = model manifest
 - IsaacLab 与 Unitree 两套 29 关节名称；
 - Unitree order 的 `default_q`、`action_scale`、`kp`、`kd`；
 - RobotMDAR checkpoint、VAE、normalization statistics 和各自 SHA-256；
-- `future_steps=5`、`anchor_body=torso_link`、`quaternion_order=wxyz`。
+- `future_steps=5`、与训练配置一致的 `anchor_body`、`quaternion_order=wxyz`。
+
+当前 `latest.onnx` 对应训练配置中的 `anchor_body_name` 是 `pelvis`，所以实机状态必须使用
+pelvis/base 的位置和姿态构造相对 anchor observation；不能把 torso 位姿或人为清零的位置
+混入该策略。后续模型必须在各自 manifest 中声明自己的 anchor body。
+
+## 当前预训练资产
+
+仓库提供 `config/textop_pretrained.yaml`，将当前确认的五个资产绑定为一个不可混用的模型组：
+
+- RobotMDAR `ckpt_200000.pth`；
+- RobotMDAR `vae.pth`；
+- RobotMDAR `action_statistics.json`；
+- RobotMDAR 实际用于 57 维归一化的 `meanstd.pkl`；
+- Tracker `latest.onnx`，ABI 为 `obs[1,431] → actions[1,29]`。
+
+Generator 和 Tracker 启动时读取同一个 manifest，并在加载模型前逐个验证 SHA-256。
+组合 launch 默认使用该 manifest；`skeleton_asset_root` 默认指向 TextOpRobotMDAR 的 G1
+description 目录，部署到其他机器时应显式覆盖这两个路径。
 
 启动时必须先验证 manifest、文件 hash、shape、关节双射和所有数值。验证失败时不得申请
 low-level lease。
@@ -118,6 +136,12 @@ Generator 状态为 `UNLOADED → LOADING → READY → GENERATING → DRAINING 
 Cancel 或 fault 必须作为一个逻辑事务完成：使在途生成结果失效、清空 buffer、重置
 frame/last action、停止 candidate、撤销 lease。动作自然结束只允许配置的短暂 hold，随后
 执行同样的停止流程，不无限锁定最后一帧。
+
+Generator 以 `ceil(duration / (8 * 0.02))` 计算完整 primitive 数，不截断最后一个
+primitive。首段发布后才申请 lease，并在 Action 生命周期内续租。Tracker 每次成功执行
+策略后发布强类型 `TextOpTrackerStatus`；Generator 只以匹配 request ID 的真实消费帧数
+填充 Action feedback，并在最后一帧执行后撤销 lease。Tracker 状态超时同样触发 fail-safe
+停止，不能用墙钟伪造执行完成。
 
 ## 测试策略
 

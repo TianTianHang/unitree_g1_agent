@@ -1,0 +1,13 @@
+textop_generator_node:
+  ros__parameters:
+    manifest_path: ""
+    skeleton_asset_root: ""
+    device: "cuda:3"
+    guidance_scale: 2.5
+    compile_backend: ""
+    action_name: "/g1/textop/execute_motion"
+    reference_topic: "/g1/textop/reference"
+    lease_topic: "/g1/low_level/lease"
+    tracker_status_topic: "/g1/textop/tracker_status"
+    lease_ttl: 0.5
+    tracker_timeout: 2.0

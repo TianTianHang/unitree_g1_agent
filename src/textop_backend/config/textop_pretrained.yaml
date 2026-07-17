@@ -1,0 +1,80 @@
+schema_version: 1
+model_id: textop-pretrained-20260630
+robot_profile: g1_29dof_unitree_v1
+control_profile: textop_tracker_v1
+control_frequency: 50
+
+policy:
+  path: /home/ubuntu/Desktop/TextOp/TextOpTracker/logs/rsl_rl/Pretrained/checkpoints/latest.onnx
+  sha256: 8df6371cce677a6ef8fd7124d082fbf98df11735b9e1aa5808f1bf9d3152b582
+  input_name: obs
+  output_name: actions
+  input_shape: [1, 431]
+  output_shape: [1, 29]
+
+generator:
+  checkpoint:
+    path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/logs/pretrained/checkpoint/ckpt_200000.pth
+    sha256: 9c514d8e61d6f24b9e5b6b278b9987c9d768c7c86883e834f51e0f0c2a18f00f
+  vae:
+    path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/logs/pretrained/checkpoint/vae.pth
+    sha256: 6522ab17b8904d1ea6a1dcdef241090000706b485312a319007dc4bb3eac8955
+  statistics:
+    path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/dataset/BABEL-AMASS-ROBOT-23dof-FULL-50fps/action_statistics.json
+    sha256: 036a432ff3d8d3d790eaaa4f2e65ed0fa05cdb3f7b5fafaf749bb98383438bfc
+  normalization:
+    path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/dataset/BABEL-AMASS-ROBOT-23dof-FULL-50fps/meanstd.pkl
+    sha256: ac5af14f9743773a6e64dc1a2a87251e569e56ea929fa00d6ad750dcb08bd41e
+
+joint_names:
+  isaaclab:
+    [left_hip_pitch_joint, right_hip_pitch_joint, waist_yaw_joint,
+     left_hip_roll_joint, right_hip_roll_joint, waist_roll_joint,
+     left_hip_yaw_joint, right_hip_yaw_joint, waist_pitch_joint,
+     left_knee_joint, right_knee_joint, left_shoulder_pitch_joint,
+     right_shoulder_pitch_joint, left_ankle_pitch_joint, right_ankle_pitch_joint,
+     left_shoulder_roll_joint, right_shoulder_roll_joint, left_ankle_roll_joint,
+     right_ankle_roll_joint, left_shoulder_yaw_joint, right_shoulder_yaw_joint,
+     left_elbow_joint, right_elbow_joint, left_wrist_roll_joint,
+     right_wrist_roll_joint, left_wrist_pitch_joint, right_wrist_pitch_joint,
+     left_wrist_yaw_joint, right_wrist_yaw_joint]
+  unitree:
+    [left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint,
+     left_knee_joint, left_ankle_pitch_joint, left_ankle_roll_joint,
+     right_hip_pitch_joint, right_hip_roll_joint, right_hip_yaw_joint,
+     right_knee_joint, right_ankle_pitch_joint, right_ankle_roll_joint,
+     waist_yaw_joint, waist_roll_joint, waist_pitch_joint,
+     left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint,
+     left_elbow_joint, left_wrist_roll_joint, left_wrist_pitch_joint,
+     left_wrist_yaw_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint,
+     right_shoulder_yaw_joint, right_elbow_joint, right_wrist_roll_joint,
+     right_wrist_pitch_joint, right_wrist_yaw_joint]
+
+default_q:
+  [-0.312, 0.0, 0.0, 0.669, -0.363, 0.0,
+   -0.312, 0.0, 0.0, 0.669, -0.363, 0.0,
+   0.0, 0.0, 0.0, 0.2, 0.2, 0.0, 0.6, 0.0, 0.0, 0.0,
+   0.2, -0.2, 0.0, 0.6, 0.0, 0.0, 0.0]
+action_scale:
+  [0.5475464652142303, 0.3506614663788243, 0.5475464652142303, 0.3506614663788243, 0.43857731392336724, 0.43857731392336724,
+   0.5475464652142303, 0.3506614663788243, 0.5475464652142303, 0.3506614663788243, 0.43857731392336724, 0.43857731392336724,
+   0.5475464652142303, 0.43857731392336724, 0.43857731392336724, 0.43857731392336724, 0.43857731392336724, 0.43857731392336724,
+   0.43857731392336724, 0.43857731392336724, 0.07450087032950714, 0.07450087032950714, 0.43857731392336724, 0.43857731392336724,
+   0.43857731392336724, 0.43857731392336724, 0.43857731392336724, 0.07450087032950714, 0.07450087032950714]
+kp:
+  [40.17923847137318, 99.09842777666113, 40.17923847137318, 99.09842777666113, 28.50124619574858, 28.50124619574858,
+   40.17923847137318, 99.09842777666113, 40.17923847137318, 99.09842777666113, 28.50124619574858, 28.50124619574858,
+   40.17923847137318, 28.50124619574858, 28.50124619574858, 14.25062309787429, 14.25062309787429, 14.25062309787429,
+   14.25062309787429, 14.25062309787429, 16.77832748089279, 16.77832748089279, 14.25062309787429, 14.25062309787429,
+   14.25062309787429, 14.25062309787429, 14.25062309787429, 16.77832748089279, 16.77832748089279]
+kd:
+  [2.5578897650279457, 6.3088018534966395, 2.5578897650279457, 6.3088018534966395, 1.814445686584846, 1.814445686584846,
+   2.5578897650279457, 6.3088018534966395, 2.5578897650279457, 6.3088018534966395, 1.814445686584846, 1.814445686584846,
+   2.5578897650279457, 1.814445686584846, 1.814445686584846, 0.907222843292423, 0.907222843292423, 0.907222843292423,
+   0.907222843292423, 0.907222843292423, 1.06814150219, 1.06814150219, 0.907222843292423, 0.907222843292423,
+   0.907222843292423, 0.907222843292423, 0.907222843292423, 1.06814150219, 1.06814150219]
+
+reference:
+  future_steps: 5
+  anchor_body: pelvis
+  quaternion_order: wxyz

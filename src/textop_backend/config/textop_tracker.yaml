@@ -1,0 +1,13 @@
+textop_tracker_node:
+  ros__parameters:
+    manifest_path: ""
+    onnx_providers: ["CPUExecutionProvider"]
+    reference_topic: "/g1/textop/reference"
+    lease_topic: "/g1/low_level/lease"
+    candidate_topic: "/g1/low_level/candidate"
+    lowstate_topic: "/lowstate"
+    odometry_topic: "/odom"
+    lowstate_timeout: 0.1
+    odometry_timeout: 0.1
+    candidate_valid_for: 0.04
+    tracker_status_topic: "/g1/textop/tracker_status"

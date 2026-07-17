@@ -46,7 +46,7 @@ class GeneratorStateMachine:
         return GenerationToken(request_id, self._generation)
 
     def accept(self, token: GenerationToken) -> None:
-        self._check(token)
+        self.ensure_active(token)
         if self.state is not GeneratorState.GENERATING:
             raise StaleGeneration("generation is no longer active")
         self.state = GeneratorState.DRAINING
@@ -76,3 +76,8 @@ class GeneratorStateMachine:
     def _check(self, token: GenerationToken) -> None:
         if token.generation != self._generation or token.request_id != self.request_id:
             raise StaleGeneration("stale generation result")
+
+    def ensure_active(self, token: GenerationToken) -> None:
+        self._check(token)
+        if self.state is not GeneratorState.GENERATING:
+            raise StaleGeneration("generation is no longer active")
