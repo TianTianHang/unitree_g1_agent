@@ -252,6 +252,48 @@ def _ready_bridge():
     return clock, node, bridge
 
 
+def test_textop_backend_does_not_construct_sport_command_bridge():
+    node = FakeNode()
+    bridge = G1InterfaceNode(
+        node=node,
+        config=G1InterfaceConfig.default().with_motion_backend("textop"),
+        monotonic_clock=ManualMonotonicClock(),
+    )
+
+    assert bridge.motion_backend == "textop"
+    assert "/api/sport/request" not in node.publishers
+    assert "/g1/safe_cmd/loco" not in node.subscription_types
+    assert "/g1/safe_cmd/stop" not in node.subscription_types
+    assert all(callback != bridge.query_sport_mode for _, callback, _ in node.timers)
+    assert all(callback != bridge.watchdog_tick for _, callback, _ in node.timers)
+
+
+def test_textop_backend_shutdown_never_publishes_sport_stop():
+    node = FakeNode()
+    bridge = G1InterfaceNode(
+        node=node,
+        config=G1InterfaceConfig.default().with_motion_backend("textop"),
+        monotonic_clock=ManualMonotonicClock(),
+    )
+
+    bridge.shutdown()
+
+    assert "/api/sport/request" not in node.publishers
+
+
+def test_textop_backend_health_timer_does_not_access_sport_client():
+    node = FakeNode()
+    bridge = G1InterfaceNode(
+        node=node,
+        config=G1InterfaceConfig.default().with_motion_backend("textop"),
+        monotonic_clock=ManualMonotonicClock(),
+    )
+
+    bridge.publish_health()
+
+    assert len(node.publishers["/g1/state/health"].messages) == 1
+
+
 def _velocity_requests(node):
     return [json.loads(request.parameter)["velocity"] for request in node.publishers["/api/sport/request"].messages]
 

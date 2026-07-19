@@ -1,3 +1,6 @@
+motion:
+  backend: official_loco
+
 robot:
   model: g1
   dof_profile: auto

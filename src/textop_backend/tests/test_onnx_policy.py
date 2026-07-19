@@ -26,6 +26,20 @@ class FakeSession:
         return [self.output]
 
 
+class _OrtModule:
+    def __init__(self, session_providers, available):
+        self._session_providers = session_providers
+        self._available = available
+
+    def get_available_providers(self):
+        return self._available
+
+    def InferenceSession(self, path, providers):
+        session = FakeSession()
+        session.get_providers = lambda: self._session_providers
+        return session
+
+
 def test_policy_passes_batched_float32_observation():
     session = FakeSession(output=np.arange(29, dtype=np.float32).reshape(1, 29))
     policy = OnnxPolicy(session, input_name="obs", output_name="actions")
@@ -50,3 +64,31 @@ def test_policy_rejects_non_finite_output():
     policy = OnnxPolicy(FakeSession(output), input_name="obs", output_name="actions")
     with pytest.raises(PolicyError, match="finite"):
         policy.predict(np.zeros(431, np.float32))
+
+
+def test_load_policy_rejects_unavailable_requested_provider(monkeypatch, tmp_path):
+    import textop_backend.onnx_policy as module
+
+    monkeypatch.setitem(__import__("sys").modules, "onnxruntime", _OrtModule(
+        ["CPUExecutionProvider"], ["CPUExecutionProvider"]
+    ))
+    with pytest.raises(PolicyError, match="CUDAExecutionProvider"):
+        module.load_onnx_policy(
+            str(tmp_path / "policy.onnx"),
+            input_name="obs", output_name="actions",
+            providers=["CUDAExecutionProvider"],
+        )
+
+
+def test_load_policy_rejects_runtime_provider_fallback(monkeypatch, tmp_path):
+    import textop_backend.onnx_policy as module
+
+    monkeypatch.setitem(__import__("sys").modules, "onnxruntime", _OrtModule(
+        ["CPUExecutionProvider"], ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    ))
+    with pytest.raises(PolicyError, match="fell back"):
+        module.load_onnx_policy(
+            str(tmp_path / "policy.onnx"),
+            input_name="obs", output_name="actions",
+            providers=["CUDAExecutionProvider"],
+        )

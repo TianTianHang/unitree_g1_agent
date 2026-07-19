@@ -1,6 +1,15 @@
 import numpy as np
 
-from textop_backend.tracker import RobotState, build_observation, decode_action
+from textop_backend.tracker import RobotState, body_vector_to_world, build_observation, decode_action
+
+
+def test_body_vector_to_world_uses_pelvis_orientation():
+    half_sqrt = np.sqrt(0.5).astype(np.float32)
+    orientation = np.array([half_sqrt, 0.0, 0.0, half_sqrt], dtype=np.float32)
+
+    result = body_vector_to_world(orientation, np.array([1.0, 0.0, 0.0], dtype=np.float32))
+
+    np.testing.assert_allclose(result, [0.0, 1.0, 0.0], atol=1e-6)
 
 
 def test_observation_has_exact_431_abi_and_expected_slices():

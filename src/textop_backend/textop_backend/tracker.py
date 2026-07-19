@@ -51,6 +51,11 @@ def _quat_rotate_inverse(q: FloatArray, vector: FloatArray) -> FloatArray:
     return _quat_multiply(_quat_multiply(_quat_conjugate(q), pure), q)[1:]
 
 
+def body_vector_to_world(q_wxyz: FloatArray, vector_body: FloatArray) -> FloatArray:
+    pure = np.array([0.0, *vector_body], dtype=np.float32)
+    return _quat_multiply(_quat_multiply(q_wxyz, pure), _quat_conjugate(q_wxyz))[1:]
+
+
 def _matrix_from_quat(q: FloatArray) -> FloatArray:
     w, x, y, z = q
     return np.array(

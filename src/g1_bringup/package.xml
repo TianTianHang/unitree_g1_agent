@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>g1_bringup</name>
+  <version>0.1.0</version>
+  <description>Static motion backend selection for the G1 system.</description>
+  <maintainer email="2450804878@qq.com">unitree_g1_agent</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>g1_interface</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>low_level_guard</exec_depend>
+  <exec_depend>textop_backend</exec_depend>
+  <test_depend>pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

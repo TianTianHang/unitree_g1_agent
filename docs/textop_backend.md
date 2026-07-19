@@ -1,5 +1,9 @@
 # TextOp Motion Backend 设计
 
+TextOp 与官方 Loco 的选择采用启动期静态配置，运行期间禁止切换；启动拓扑、控制权互斥
+和 stop 路由见 [`motion_backend_selection.md`](motion_backend_selection.md)。本文只定义
+TextOp 后端内部推理与控制契约。
+
 本文定义本仓库内 TextOp 推理与控制实现的架构真相。实现不得启动、导入或通过
 `PYTHONPATH` 引用相邻 `../TextOp` 工作树中的部署脚本。模型权重和统计数据是受
 manifest 管理的外部资产；RobotMDAR 模型运行库是固定版本的安装依赖。

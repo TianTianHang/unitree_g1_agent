@@ -41,5 +41,19 @@ def load_onnx_policy(path: str, *, input_name: str, output_name: str, providers:
         import onnxruntime as ort
     except ImportError as exc:
         raise PolicyError("onnxruntime is not installed") from exc
-    session = ort.InferenceSession(path, providers=providers or ["CPUExecutionProvider"])
+    requested = list(providers or ["CPUExecutionProvider"])
+    available = set(ort.get_available_providers())
+    missing = [provider for provider in requested if provider not in available]
+    if missing:
+        raise PolicyError(
+            "requested ONNX Runtime provider(s) are unavailable: "
+            + ", ".join(missing)
+            + f"; available={sorted(available)}"
+        )
+    session = ort.InferenceSession(path, providers=requested)
+    active = set(session.get_providers())
+    if requested and requested[0] not in active:
+        raise PolicyError(
+            f"ONNX Runtime fell back from {requested[0]} to {session.get_providers()}"
+        )
     return OnnxPolicy(session, input_name=input_name, output_name=output_name)

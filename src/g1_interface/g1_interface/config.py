@@ -8,6 +8,9 @@ from typing import Any
 import yaml
 
 DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
+    "motion": {
+        "backend": "official_loco",
+    },
     "robot": {
         "model": "g1",
         "dof_profile": "auto",
@@ -84,6 +87,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 @dataclass(frozen=True)
 class G1InterfaceConfig:
+    motion: dict[str, str]
     robot: dict[str, Any]
     native_topics: dict[str, str]
     project_topics: dict[str, str]
@@ -107,6 +111,7 @@ class G1InterfaceConfig:
     @classmethod
     def _from_dict(cls, raw: dict[str, Any]) -> G1InterfaceConfig:
         config = cls(
+            motion=dict(raw["motion"]),
             robot=dict(raw["robot"]),
             native_topics=dict(raw["native_topics"]),
             project_topics=dict(raw["project_topics"]),
@@ -120,6 +125,7 @@ class G1InterfaceConfig:
 
     def with_asr_source_mode(self, source_mode: str) -> G1InterfaceConfig:
         raw = {
+            "motion": self.motion,
             "robot": self.robot,
             "native_topics": self.native_topics,
             "project_topics": self.project_topics,
@@ -130,7 +136,24 @@ class G1InterfaceConfig:
         }
         return self._from_dict(raw)
 
+    def with_motion_backend(self, backend: str) -> G1InterfaceConfig:
+        raw = {
+            "motion": {**self.motion, "backend": backend},
+            "robot": self.robot,
+            "native_topics": self.native_topics,
+            "project_topics": self.project_topics,
+            "control": self.control,
+            "timeouts": self.timeouts,
+            "sport_api": self.sport_api,
+            "asr": self.asr,
+        }
+        return self._from_dict(raw)
+
     def validate(self) -> None:
+        backend = self.motion.get("backend")
+        if backend not in {"official_loco", "textop"}:
+            raise ValueError(f"unsupported motion backend: {backend}")
+
         required_topics = [
             ("native_topics", "low_state"),
             ("native_topics", "low_state_low_freq"),

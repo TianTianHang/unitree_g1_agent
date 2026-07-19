@@ -189,6 +189,8 @@ class G1InterfaceNode:
         self.config = config
         self.msg = _load_ros_messages()
         self._monotonic_clock = monotonic_clock or time.monotonic
+        self.motion_backend = str(config.motion["backend"])
+        self._sport_enabled = self.motion_backend == "official_loco"
 
         self.last_lowstate_monotonic_sec: float | None = None
         self.last_safety_heartbeat_monotonic_sec: float | None = None
@@ -219,11 +221,13 @@ class G1InterfaceNode:
 
         self._imu_to_payload = imu_to_payload
         self._lowstate_to_summary = lowstate_to_summary
-        self._sport_api = SportApiClient(
-            request_cls=self.msg["Request"],
-            api_ids=config.sport_api["api_ids"],
-            response_timeout_sec=config.timeouts["api_response_timeout_ms"] / 1000.0,
-        )
+        self._sport_api = None
+        if self._sport_enabled:
+            self._sport_api = SportApiClient(
+                request_cls=self.msg["Request"],
+                api_ids=config.sport_api["api_ids"],
+                response_timeout_sec=config.timeouts["api_response_timeout_ms"] / 1000.0,
+            )
 
         self.low_pub = node.create_publisher(self.msg["RobotStateSummary"], "/g1/state/low", 10)
         self.motor_pub = node.create_publisher(self.msg["String"], "/g1/state/motors", 10)
@@ -232,11 +236,11 @@ class G1InterfaceNode:
         self.imu_pub = node.create_publisher(self.msg["Imu"], "/g1/state/imu", 10)
         self.asr_pub = node.create_publisher(self.msg["VoiceEvent"], config.project_topics["asr"], 10)
         self.audio_event_pub = node.create_publisher(self.msg["VoiceEvent"], config.project_topics["audio_event"], 10)
-        self.sport_request_pub = node.create_publisher(
-            self.msg["Request"],
-            config.native_topics["sport_request"],
-            10,
-        )
+        self.sport_request_pub = None
+        if self._sport_enabled:
+            self.sport_request_pub = node.create_publisher(
+                self.msg["Request"], config.native_topics["sport_request"], 10
+            )
 
         node.create_subscription(
             self.msg["LowState"],
@@ -256,12 +260,10 @@ class G1InterfaceNode:
             self.on_secondary_imu,
             10,
         )
-        node.create_subscription(
-            self.msg["Response"],
-            config.native_topics["sport_response"],
-            self.on_sport_response,
-            10,
-        )
+        if self._sport_enabled:
+            node.create_subscription(
+                self.msg["Response"], config.native_topics["sport_response"], self.on_sport_response, 10
+            )
         node.create_subscription(
             self.msg["String"],
             config.native_topics["audio_msg"],
@@ -274,29 +276,25 @@ class G1InterfaceNode:
             self.on_safety_state,
             10,
         )
-        node.create_subscription(
-            self.msg["ValidatedLocoCommand"],
-            "/g1/safe_cmd/loco",
-            self.on_safe_loco,
-            10,
-        )
-        node.create_subscription(
-            self.msg["ValidatedActionCommand"],
-            "/g1/safe_cmd/stop",
-            self.on_safe_stop,
-            10,
-        )
+        if self._sport_enabled:
+            node.create_subscription(
+                self.msg["ValidatedLocoCommand"], "/g1/safe_cmd/loco", self.on_safe_loco, 10
+            )
+            node.create_subscription(
+                self.msg["ValidatedActionCommand"], "/g1/safe_cmd/stop", self.on_safe_stop, 10
+            )
 
         period = config.timeouts["health_publish_period_ms"] / 1000.0
         node.create_timer(period, self.publish_health)
-        mode_query_period = config.timeouts["mode_query_period_ms"] / 1000.0
-        node.create_timer(mode_query_period, self.query_sport_mode)
+        if self._sport_enabled:
+            mode_query_period = config.timeouts["mode_query_period_ms"] / 1000.0
+            node.create_timer(mode_query_period, self.query_sport_mode)
 
-        from rclpy.clock import Clock, ClockType
+            from rclpy.clock import Clock, ClockType
 
-        self._steady_clock = Clock(clock_type=ClockType.STEADY_TIME)
-        watchdog_period = config.timeouts["motion_watchdog_period_ms"] / 1000.0
-        node.create_timer(watchdog_period, self.watchdog_tick, clock=self._steady_clock)
+            self._steady_clock = Clock(clock_type=ClockType.STEADY_TIME)
+            watchdog_period = config.timeouts["motion_watchdog_period_ms"] / 1000.0
+            node.create_timer(watchdog_period, self.watchdog_tick, clock=self._steady_clock)
 
     def _now_sec(self) -> float:
         """Return ROS time for externally published timestamps only."""
@@ -561,6 +559,8 @@ class G1InterfaceNode:
                 self.sport_fsm_mode = int(data)
 
     def _expire_api_requests(self, now_sec: float) -> None:
+        if self._sport_api is None:
+            return
         for expired in self._sport_api.expired_requests(now_sec):
             self.consecutive_api_timeouts += 1
             self.node.get_logger().warning(
@@ -609,7 +609,7 @@ class G1InterfaceNode:
             now_sec=now_sec,
             last_lowstate_sec=self.last_lowstate_monotonic_sec,
             state_timeout_sec=self.state_timeout_sec,
-            pending_api_count=self._sport_api.pending_count,
+            pending_api_count=self._sport_api.pending_count if self._sport_api is not None else 0,
             last_api_result=self.last_api_result,
             last_sport_response_sec=self.last_sport_response_monotonic_sec,
             last_successful_mode_query_sec=self.last_successful_mode_query_monotonic_sec,
@@ -619,6 +619,11 @@ class G1InterfaceNode:
             last_command_ack=self.last_command_ack,
             last_safety_heartbeat_sec=self.last_safety_heartbeat_monotonic_sec,
             safety_heartbeat_timeout_sec=self.safety_heartbeat_timeout_sec,
+        )
+        status_payload["configured_backend"] = self.motion_backend
+        status_payload["runtime_switching"] = False
+        status_payload["control_output"] = (
+            self.config.native_topics["sport_request"] if self._sport_enabled else "/lowcmd"
         )
         status_payload["invalid_audio_event_count"] = self.invalid_audio_event_count
 
@@ -640,7 +645,8 @@ class G1InterfaceNode:
         if self._shutdown_stop_sent:
             return
         self._shutdown_stop_sent = True
-        self._publish_stop_request("shutdown", self._monotonic_sec(), force=True)
+        if self._sport_enabled:
+            self._publish_stop_request("shutdown", self._monotonic_sec(), force=True)
 
 
 def main(args=None):
@@ -657,6 +663,10 @@ def main(args=None):
     config = G1InterfaceConfig.from_yaml(config_path) if config_path else G1InterfaceConfig.default()
     if asr_source_mode:
         config = config.with_asr_source_mode(asr_source_mode)
+    node.declare_parameter("motion_backend", "")
+    motion_backend = node.get_parameter("motion_backend").get_parameter_value().string_value
+    if motion_backend:
+        config = config.with_motion_backend(motion_backend)
     bridge = G1InterfaceNode(node=node, config=config)
     try:
         rclpy.spin(node)

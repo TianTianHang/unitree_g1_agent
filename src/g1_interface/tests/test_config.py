@@ -17,6 +17,16 @@ def test_default_config_uses_unitree_ros2_topic_names():
     assert config.control["allow_low_level"] is False
     assert config.control["default_mode"] == "sport_api_loco"
     assert config.timeouts["mode_query_period_ms"] == 500
+    assert config.motion["backend"] == "official_loco"
+
+
+def test_motion_backend_is_static_and_validated():
+    config = G1InterfaceConfig.default().with_motion_backend("textop")
+
+    assert config.motion["backend"] == "textop"
+
+    with pytest.raises(ValueError, match="unsupported motion backend"):
+        config.with_motion_backend("automatic")
 
 
 def test_yaml_overrides_defaults(tmp_path: Path):
