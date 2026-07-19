@@ -60,6 +60,10 @@ make check-textop
 该命令只使用 `.venv-textop` 执行推理相关测试，不会改写 `.venv-ros`。模型制品、GPU smoke
 和实机验收要求见 [`docs/textop_runtime_acceptance.md`](docs/textop_runtime_acceptance.md)；
 功能冻结、第三方边界和解冻条件见 [`docs/project_governance.md`](docs/project_governance.md)。
+流式 `(prompt, duration)` 替换语义见
+[`docs/textop_streaming_commands.md`](docs/textop_streaming_commands.md)。部署时先 source 普通
+`install/setup.bash`，再 source `install-textop/setup.bash`，确保 TextOp console script 使用
+`.venv-textop` 解释器。
 
 ## 可选 ASR 运行时
 

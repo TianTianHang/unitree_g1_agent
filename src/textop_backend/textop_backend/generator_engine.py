@@ -55,8 +55,21 @@ class GeneratorEngine:
 
     def begin(self, request_id: str, prompt: str) -> GenerationToken:
         token = self.machine.begin(request_id, prompt)
-        self.history, self.absolute_pose = self.runtime.initial_state()
-        self.embedding = self.runtime.encode_text(prompt)
+        history, absolute_pose = self.runtime.initial_state()
+        embedding = self.runtime.encode_text(prompt)
+        self.machine.ensure_active(token)
+        self.history, self.absolute_pose = history, absolute_pose
+        self.embedding = embedding
+        self.segment_index = 0
+        self.start_frame = 0
+        return token
+
+    def replace(self, request_id: str, prompt: str) -> GenerationToken:
+        """Replace the text condition while preserving motion history and pose."""
+        token = self.machine.replace(request_id, prompt)
+        embedding = self.runtime.encode_text(prompt)
+        self.machine.ensure_active(token)
+        self.embedding = embedding
         self.segment_index = 0
         self.start_frame = 0
         return token

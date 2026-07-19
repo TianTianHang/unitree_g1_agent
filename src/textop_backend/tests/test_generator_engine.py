@@ -58,3 +58,21 @@ def test_cancel_rejects_late_primitive_result():
     engine.cancel("r1")
     with pytest.raises(StaleGeneration):
         engine.generate_next(token)
+
+
+def test_replace_changes_text_but_preserves_history_and_pose():
+    runtime = FakeRuntime()
+    engine = GeneratorEngine(runtime)
+    old = engine.begin("r1", "wave")
+    engine.generate_next(old)
+
+    new = engine.replace("r2", "turn left")
+    segment = engine.generate_next(new)
+
+    assert runtime.calls[1] == ("embedding:turn left", "history-1", "pose-1")
+    assert segment.request_id == "r2"
+    assert segment.segment_index == 0
+    assert segment.start_frame == 0
+    assert segment.reset
+    with pytest.raises(StaleGeneration):
+        engine.generate_next(old)

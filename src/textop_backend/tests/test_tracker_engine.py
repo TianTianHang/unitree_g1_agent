@@ -53,9 +53,9 @@ def _manifest(tmp_path: Path):
     return load_manifest(path, verify_assets=False)
 
 
-def _segment():
+def _segment(request_id="r1"):
     return MotionReferenceSegment(
-        request_id="r1", segment_index=0, start_frame=0, dt=0.02, reset=True, end_of_motion=True,
+        request_id=request_id, segment_index=0, start_frame=0, dt=0.02, reset=True, end_of_motion=True,
         joint_position=np.zeros((2, 29), np.float32), joint_velocity=np.zeros((2, 29), np.float32),
         anchor_position=np.zeros((2, 3), np.float32),
         anchor_orientation_wxyz=np.tile([1, 0, 0, 0], (2, 1)).astype(np.float32),
@@ -90,6 +90,19 @@ def test_reset_clears_frame_and_last_action(tmp_path):
 
     assert engine.frame == 0
     np.testing.assert_array_equal(engine.last_action, np.zeros(29))
+
+
+def test_replacement_reference_preserves_previous_policy_action(tmp_path):
+    policy = FakePolicy()
+    engine = TrackerEngine(_manifest(tmp_path), policy)
+    engine.append_reference(_segment("r1"))
+    engine.last_action = np.arange(29, dtype=np.float32)
+
+    engine.append_reference(_segment("r2"))
+
+    assert engine.frame == 0
+    assert engine.references.request_id == "r2"
+    np.testing.assert_array_equal(engine.last_action, np.arange(29, dtype=np.float32))
 
 
 def test_engine_does_not_advance_beyond_generated_reference(tmp_path):

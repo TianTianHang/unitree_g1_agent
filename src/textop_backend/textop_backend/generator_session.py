@@ -29,6 +29,16 @@ class GeneratorSession:
         self.generated_frames = 0
         self.executed_frames = 0
 
+    def replace(self, request_id: str, *, duration_seconds: float) -> None:
+        if self.active_request_id is None:
+            raise RuntimeError("session is not active")
+        if not request_id:
+            raise ValueError("request_id must not be empty")
+        self.required_primitives = self.primitive_count(duration_seconds)
+        self.active_request_id = request_id
+        self.generated_frames = 0
+        self.executed_frames = 0
+
     def mark_generated(self, request_id: str) -> bool:
         self._ensure_active(request_id)
         self.generated_frames += self.future_len

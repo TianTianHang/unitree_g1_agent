@@ -35,6 +35,20 @@ def test_stale_tracker_status_and_cancelled_session_are_rejected():
         session.mark_generated("r1")
 
 
+def test_replacement_restarts_duration_accounting_for_new_request():
+    session = GeneratorSession(future_len=8, dt=0.02)
+    session.begin("r1", duration_seconds=0.32)
+    session.mark_generated("r1")
+    session.update_executed("r1", 5)
+
+    session.replace("r2", duration_seconds=0.17)
+
+    assert session.active_request_id == "r2"
+    assert session.required_primitives == 2
+    assert session.generated_frames == 0
+    assert session.executed_frames == 0
+
+
 @pytest.mark.parametrize("duration", [0.0, -1.0, float("nan"), float("inf")])
 def test_duration_must_be_finite_and_positive(duration):
     session = GeneratorSession(future_len=8, dt=0.02)

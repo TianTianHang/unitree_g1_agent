@@ -45,6 +45,17 @@ class GeneratorStateMachine:
         self.state = GeneratorState.GENERATING
         return GenerationToken(request_id, self._generation)
 
+    def replace(self, request_id: str, prompt: str) -> GenerationToken:
+        if self.state not in {GeneratorState.GENERATING, GeneratorState.DRAINING}:
+            raise RuntimeError(f"cannot replace from {self.state.name}")
+        if not request_id or not prompt.strip():
+            raise ValueError("request_id and prompt must not be empty")
+        self._generation += 1
+        self.request_id = request_id
+        self.prompt = prompt
+        self.state = GeneratorState.GENERATING
+        return GenerationToken(request_id, self._generation)
+
     def accept(self, token: GenerationToken) -> None:
         self.ensure_active(token)
         if self.state is not GeneratorState.GENERATING:

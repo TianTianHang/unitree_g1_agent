@@ -42,8 +42,10 @@ class TrackerEngine:
 
     def append_reference(self, segment: MotionReferenceSegment) -> None:
         if segment.reset:
+            replacing = self.references.request_id is not None
             self.frame = 0
-            self.last_action.fill(0.0)
+            if not replacing:
+                self.last_action.fill(0.0)
         self.references.append(segment)
 
     def step(self, request_id: str, state: RobotState) -> TrackerStep:
