@@ -1,10 +1,10 @@
 from voice_bridge.agent import RuleBasedAgentClient, agent_result_from_payload
 from voice_bridge.config import VoiceBridgeConfig
-from voice_bridge.internal_types import AgentRequest
+from voice_bridge.internal_types import AgentCommand, AgentRequest
 
 
-def _request(text: str) -> AgentRequest:
-    return AgentRequest(session_id="s1", text=text, asr_confidence=0.9)
+def _request(text: str, motion_backend: str = "official_loco") -> AgentRequest:
+    return AgentRequest(session_id="s1", text=text, asr_confidence=0.9, motion_backend=motion_backend)
 
 
 def test_rule_based_forward_command():
@@ -35,6 +35,17 @@ def test_rule_based_unknown_text_only_replies():
 
     assert result.commands == []
     assert result.reply_text
+
+
+def test_rule_based_textop_streams_full_text_and_duration():
+    config = VoiceBridgeConfig.default().with_motion_backend("textop")
+    agent = RuleBasedAgentClient(config)
+
+    result = agent.decide(_request("挥手3秒然后转身", "textop"))
+
+    assert result.commands == [
+        AgentCommand(kind="textop", params={"prompt": "挥手3秒然后转身", "duration_sec": 3.0})
+    ]
 
 
 def test_rule_based_duration_is_capped():

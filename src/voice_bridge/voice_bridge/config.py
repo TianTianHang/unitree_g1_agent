@@ -10,6 +10,10 @@ import yaml
 from voice_bridge.pi_config import DEFAULT_PI_CONFIG, validate_pi_config
 
 DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
+    "motion": {
+        "backend": "official_loco",
+        "textop_server_timeout_sec": 0.5,
+    },
     "voice": {
         "wake_words": ["宇树", "小宇"],
         "stop_words": ["停止", "停下", "别动", "取消", "stop"],
@@ -24,6 +28,8 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "default_vyaw": 0.5,
         "default_motion_duration_sec": 1.0,
         "max_motion_duration_sec": 2.0,
+        "default_textop_duration_sec": 5.0,
+        "max_textop_duration_sec": 30.0,
     },
     "agent": {
         "backend": "rule_based",
@@ -42,6 +48,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "robot_mode": "/g1/state/mode",
         "safety_state": "/g1/state/safety",
         "health": "/g1/state/health",
+        "textop_action": "/g1/textop/execute_motion",
     },
 }
 
@@ -72,6 +79,7 @@ def _require_string_list(mapping: dict[str, Any], key: str) -> None:
 
 @dataclass(frozen=True)
 class VoiceBridgeConfig:
+    motion: dict[str, Any]
     voice: dict[str, Any]
     motion_defaults: dict[str, Any]
     agent: dict[str, Any]
@@ -92,6 +100,7 @@ class VoiceBridgeConfig:
     @classmethod
     def _from_dict(cls, raw: dict[str, Any]) -> VoiceBridgeConfig:
         config = cls(
+            motion=dict(raw["motion"]),
             voice=dict(raw["voice"]),
             motion_defaults=dict(raw["motion_defaults"]),
             agent=dict(raw["agent"]),
@@ -101,6 +110,9 @@ class VoiceBridgeConfig:
         return config
 
     def validate(self) -> None:
+        if self.motion.get("backend") not in {"official_loco", "textop"}:
+            raise ValueError(f"unsupported motion backend: {self.motion.get('backend')}")
+        _require_number(self.motion, "textop_server_timeout_sec", positive=True)
         _require_string_list(self.voice, "wake_words")
         _require_string_list(self.voice, "stop_words")
         _require_number(self.voice, "idle_timeout_sec", positive=True)
@@ -117,10 +129,14 @@ class VoiceBridgeConfig:
             "default_vyaw",
             "default_motion_duration_sec",
             "max_motion_duration_sec",
+            "default_textop_duration_sec",
+            "max_textop_duration_sec",
         ]:
             _require_number(self.motion_defaults, key, positive=True)
         if self.motion_defaults["default_motion_duration_sec"] > self.motion_defaults["max_motion_duration_sec"]:
             raise ValueError("default_motion_duration_sec must not exceed max_motion_duration_sec")
+        if self.motion_defaults["default_textop_duration_sec"] > self.motion_defaults["max_textop_duration_sec"]:
+            raise ValueError("default_textop_duration_sec must not exceed max_textop_duration_sec")
 
         backend = self.agent.get("backend")
         if backend not in {"rule_based", "http_json", "pi_rpc", "disabled"}:
@@ -142,7 +158,18 @@ class VoiceBridgeConfig:
             "robot_mode",
             "safety_state",
             "health",
+            "textop_action",
         ]
         missing = [key for key in required_topics if not isinstance(self.topics.get(key), str) or not self.topics[key]]
         if missing:
             raise ValueError(f"missing topic config: {', '.join(missing)}")
+
+    def with_motion_backend(self, backend: str) -> VoiceBridgeConfig:
+        raw = {
+            "motion": {**self.motion, "backend": backend},
+            "voice": self.voice,
+            "motion_defaults": self.motion_defaults,
+            "agent": self.agent,
+            "topics": self.topics,
+        }
+        return self._from_dict(raw)

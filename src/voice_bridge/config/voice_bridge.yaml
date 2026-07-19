@@ -1,3 +1,7 @@
+motion:
+  backend: official_loco
+  textop_server_timeout_sec: 0.5
+
 voice:
   wake_words: ["宇树", "小宇"]
   stop_words: ["停止", "停下", "别动", "取消", "stop"]
@@ -12,6 +16,8 @@ motion_defaults:
   default_vyaw: 0.5
   default_motion_duration_sec: 1.0
   max_motion_duration_sec: 2.0
+  default_textop_duration_sec: 5.0
+  max_textop_duration_sec: 30.0
 
 agent:
   backend: pi_rpc
@@ -53,3 +59,4 @@ topics:
   robot_mode: /g1/state/mode
   safety_state: /g1/state/safety
   health: /g1/state/health
+  textop_action: /g1/textop/execute_motion

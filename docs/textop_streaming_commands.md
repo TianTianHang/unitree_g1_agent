@@ -8,6 +8,10 @@ absolute pelvis pose 和低层控制会话。
 
 ## 指令语义
 
+Agent 下发的 `prompt` 应为简短、简单、单一动作的英文命令，例如 `walk`、`turn right`、
+`wave`。Agent 负责把用户自然语言翻译成该受限形式；持续时间只写入 `duration`，不混入
+`prompt`。复杂编排应拆成后续的新 goal，而不是在一个 prompt 中描述多步动作。
+
 每条指令至少包含：
 
 - `request_id`：调用方生成的唯一 ID；

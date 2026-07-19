@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol, TypeGuard
@@ -200,11 +202,13 @@ def _load_ros_messages():
     from diagnostic_msgs.msg import DiagnosticArray
     from std_msgs.msg import String
 
+    from g1_agent_msgs.action import ExecuteMotion
     from g1_agent_msgs.msg import ActionIntent, LocoIntent, RobotStateSummary, SafetyStatus, VoiceEvent
 
     return {
         "ActionIntent": ActionIntent,
         "DiagnosticArray": DiagnosticArray,
+        "ExecuteMotion": ExecuteMotion,
         "LocoIntent": LocoIntent,
         "RobotStateSummary": RobotStateSummary,
         "SafetyStatus": SafetyStatus,
@@ -214,7 +218,7 @@ def _load_ros_messages():
 
 
 class VoiceBridgeNode:
-    def __init__(self, node, config: VoiceBridgeConfig, agent: AgentClient | None = None):
+    def __init__(self, node, config: VoiceBridgeConfig, agent: AgentClient | None = None, textop_action_client=None):
         self.node = node
         self.config = config
         self.agent = agent or build_agent_client(config)
@@ -225,6 +229,18 @@ class VoiceBridgeNode:
         self._lock = threading.RLock()
         self._agent_requests = AgentRequestState()
         self._agent_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice_bridge_agent")
+        self.textop_action_client = None
+        if config.motion["backend"] == "textop":
+            if textop_action_client is not None:
+                self.textop_action_client = textop_action_client
+            else:
+                from rclpy.action import ActionClient
+
+                self.textop_action_client = ActionClient(
+                    node,
+                    self.msg["ExecuteMotion"],
+                    config.topics["textop_action"],
+                )
 
         self.robot_mode: str | None = None
         self.safety_state: str | None = None
@@ -360,6 +376,7 @@ class VoiceBridgeNode:
             robot_mode=self.robot_mode,
             safety_state=self.safety_state,
             health_state=self.health_state,
+            motion_backend=str(self.config.motion["backend"]),
         )
         self._publish_debug_event(
             "agent_started",
@@ -367,6 +384,7 @@ class VoiceBridgeNode:
             {
                 "text": request.text,
                 "backend": self.config.agent["backend"],
+                "motion_backend": request.motion_backend,
                 "robot_mode": self.robot_mode,
                 "safety_state": self.safety_state,
             },
@@ -412,6 +430,8 @@ class VoiceBridgeNode:
         for command in result.commands:
             publish_sec = self._now_sec()
             if command.kind == "loco":
+                if self.config.motion["backend"] != "official_loco":
+                    continue
                 payload = build_loco_payload(
                     command,
                     session_id=request.session_id,
@@ -436,6 +456,8 @@ class VoiceBridgeNode:
                     _loco_intent_debug_payload(intent),
                     publish_sec,
                 )
+            elif command.kind == "textop":
+                self._send_textop_goal(command, request, publish_sec)
             elif command.kind == "action":
                 action = str(command.params.get("action", "stop"))
                 intent = action_intent(
@@ -478,6 +500,83 @@ class VoiceBridgeNode:
             self._publish_string(self.led_pub, payload)
             self._publish_command_debug_event(self.config.topics["led"], request.session_id, payload, self._now_sec())
 
+    def _send_textop_goal(self, command: AgentCommand, request: AgentRequest, now_sec: float) -> None:
+        if self.config.motion["backend"] != "textop" or self.textop_action_client is None:
+            return
+        prompt = command.params.get("prompt")
+        raw_duration = command.params.get("duration_sec")
+        try:
+            duration_sec = float(raw_duration) if raw_duration is not None else math.nan
+        except (TypeError, ValueError):
+            duration_sec = math.nan
+        normalized_prompt = " ".join(prompt.strip().split()) if isinstance(prompt, str) else ""
+        if (
+            not normalized_prompt
+            or len(normalized_prompt) > 100
+            or re.fullmatch(r"[A-Za-z][A-Za-z -]*", normalized_prompt) is None
+            or not math.isfinite(duration_sec)
+            or duration_sec <= 0
+        ):
+            self._publish_debug_event(
+                "textop_goal_rejected", request.session_id, {"reason": "invalid_command"}, now_sec
+            )
+            return
+        timeout = float(self.config.motion["textop_server_timeout_sec"])
+        if not self.textop_action_client.wait_for_server(timeout_sec=timeout):
+            self._publish_debug_event(
+                "textop_goal_rejected", request.session_id, {"reason": "server_unavailable"}, now_sec
+            )
+            return
+        goal = self.msg["ExecuteMotion"].Goal()
+        goal.request_id = self._new_command_id(now_sec, "textop")
+        goal.backend_id = "textop"
+        goal.prompt = normalized_prompt
+        goal.duration.sec = int(duration_sec)
+        goal.duration.nanosec = int(round((duration_sec - int(duration_sec)) * 1_000_000_000))
+        if goal.duration.nanosec == 1_000_000_000:
+            goal.duration.sec += 1
+            goal.duration.nanosec = 0
+        future = self.textop_action_client.send_goal_async(goal)
+        future.add_done_callback(lambda done: self._on_textop_goal_response(done, request.session_id, goal.request_id))
+        self._publish_debug_event(
+            "textop_goal_sent",
+            request.session_id,
+            {"request_id": goal.request_id, "prompt": goal.prompt, "duration_sec": duration_sec},
+            now_sec,
+        )
+
+    def _on_textop_goal_response(self, future, session_id: str, request_id: str) -> None:
+        now_sec = self._now_sec()
+        try:
+            goal_handle = future.result()
+            if goal_handle is None or not goal_handle.accepted:
+                self._publish_debug_event("textop_goal_rejected", session_id, {"request_id": request_id}, now_sec)
+                return
+            self._publish_debug_event("textop_goal_accepted", session_id, {"request_id": request_id}, now_sec)
+            goal_handle.get_result_async().add_done_callback(
+                lambda done: self._on_textop_result(done, session_id, request_id)
+            )
+        except Exception as exc:
+            self._publish_debug_event(
+                "textop_goal_failed", session_id, {"request_id": request_id, "reason": str(exc)}, now_sec
+            )
+
+    def _on_textop_result(self, future, session_id: str, request_id: str) -> None:
+        now_sec = self._now_sec()
+        try:
+            response = future.result()
+            result = response.result
+            self._publish_debug_event(
+                "textop_goal_completed" if result.success else "textop_goal_failed",
+                session_id,
+                {"request_id": request_id, "reason": result.reason, "status": response.status},
+                now_sec,
+            )
+        except Exception as exc:
+            self._publish_debug_event(
+                "textop_goal_failed", session_id, {"request_id": request_id, "reason": str(exc)}, now_sec
+            )
+
     def publish_state(self) -> None:
         with self._lock:
             payload = {
@@ -487,6 +586,7 @@ class VoiceBridgeNode:
                 "last_decision": self.last_decision,
                 "last_error": self.last_error,
                 "agent_backend": self.config.agent["backend"],
+                "motion_backend": self.config.motion["backend"],
             }
         self._publish_string(self.state_pub, payload)
 
@@ -503,8 +603,12 @@ def main(args=None):
     rclpy.init(args=args)
     node = rclpy.create_node("voice_bridge_node")
     node.declare_parameter("config_path", "")
+    node.declare_parameter("motion_backend", "")
     config_path = node.get_parameter("config_path").get_parameter_value().string_value
     config = VoiceBridgeConfig.from_yaml(config_path) if config_path else VoiceBridgeConfig.default()
+    motion_backend = node.get_parameter("motion_backend").get_parameter_value().string_value
+    if motion_backend:
+        config = config.with_motion_backend(motion_backend)
     voice_bridge = VoiceBridgeNode(node=node, config=config)
     try:
         rclpy.spin(node)

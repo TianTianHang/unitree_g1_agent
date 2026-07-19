@@ -1,5 +1,6 @@
 import pytest
 
+from g1_agent_msgs.action import ExecuteMotion
 from g1_agent_msgs.msg import (
     ActionIntent,
     LocoIntent,
@@ -155,6 +156,7 @@ def fake_ros_messages():
     return {
         "ActionIntent": ActionIntent,
         "DiagnosticArray": object,
+        "ExecuteMotion": ExecuteMotion,
         "LocoIntent": LocoIntent,
         "RobotStateSummary": RobotStateSummary,
         "SafetyStatus": SafetyStatus,
@@ -183,6 +185,31 @@ class FakeNode:
 
     def get_logger(self):
         return FakeLogger()
+
+
+class FakeFuture:
+    def __init__(self, result=None):
+        self._result = result
+
+    def result(self):
+        return self._result
+
+    def add_done_callback(self, callback):
+        self.callback = callback
+
+
+class FakeActionClient:
+    def __init__(self, available=True):
+        self.available = available
+        self.goals = []
+
+    def wait_for_server(self, timeout_sec):
+        self.timeout_sec = timeout_sec
+        return self.available
+
+    def send_goal_async(self, goal):
+        self.goals.append(goal)
+        return FakeFuture()
 
 
 def test_stop_action_aborts_closeable_agent_after_publish(monkeypatch):
@@ -296,3 +323,49 @@ def test_agent_result_debug_event_publishes_before_commands(monkeypatch):
     assert debug_payload["data"]["commands"][0]["kind"] == "loco"
     assert len(node.loco_pub.payloads) == 1
     assert node.loco_pub.payloads[0].vx == 0.25
+
+
+def test_textop_result_sends_action_goal(monkeypatch):
+    from voice_bridge import node as node_module
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge.internal_types import AgentRequest, AgentResult
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+    client = FakeActionClient()
+    config = VoiceBridgeConfig.default().with_motion_backend("textop")
+    node = VoiceBridgeNode(FakeNode(), config, agent=NonCloseableAgent(), textop_action_client=client)
+    request = AgentRequest(session_id="s1", text="挥手", asr_confidence=0.9, motion_backend="textop")
+
+    node._publish_agent_result(
+        AgentResult(commands=[AgentCommand(kind="textop", params={"prompt": "wave", "duration_sec": 2.5})]),
+        request,
+        1.0,
+    )
+
+    assert len(client.goals) == 1
+    assert client.goals[0].backend_id == "textop"
+    assert client.goals[0].prompt == "wave"
+    assert client.goals[0].duration.sec == 2
+    assert client.goals[0].duration.nanosec == 500_000_000
+
+
+def test_textop_server_unavailable_fails_closed(monkeypatch):
+    from voice_bridge import node as node_module
+    from voice_bridge.config import VoiceBridgeConfig
+    from voice_bridge.internal_types import AgentRequest, AgentResult
+    from voice_bridge.node import VoiceBridgeNode
+
+    monkeypatch.setattr(node_module, "_load_ros_messages", fake_ros_messages)
+    client = FakeActionClient(available=False)
+    config = VoiceBridgeConfig.default().with_motion_backend("textop")
+    node = VoiceBridgeNode(FakeNode(), config, agent=NonCloseableAgent(), textop_action_client=client)
+
+    node._publish_agent_result(
+        AgentResult(commands=[AgentCommand(kind="textop", params={"prompt": "wave", "duration_sec": 2.0})]),
+        AgentRequest(session_id="s1", text="挥手", asr_confidence=0.9, motion_backend="textop"),
+        1.0,
+    )
+
+    assert client.goals == []
+    assert node.loco_pub.payloads == []

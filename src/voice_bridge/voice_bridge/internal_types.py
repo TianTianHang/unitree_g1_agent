@@ -22,6 +22,7 @@ class AgentRequest:
     safety_state: str | None = None
     health_state: str | None = None
     image_ref: str | None = None
+    motion_backend: str = "official_loco"
 
 
 @dataclass(frozen=True)

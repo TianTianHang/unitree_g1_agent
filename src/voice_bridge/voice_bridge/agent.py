@@ -29,6 +29,17 @@ class RuleBasedAgentClient:
         if contains_stop_word(text, self.config):
             return AgentResult(commands=[AgentCommand(kind="action", params={"action": "stop"})], reply_text="收到")
 
+        if request.motion_backend == "textop":
+            duration_sec = parse_duration_sec(
+                text,
+                default_duration=float(self.config.motion_defaults["default_textop_duration_sec"]),
+                max_duration=float(self.config.motion_defaults["max_textop_duration_sec"]),
+            )
+            return AgentResult(
+                commands=[AgentCommand(kind="textop", params={"prompt": text, "duration_sec": duration_sec})],
+                reply_text="收到",
+            )
+
         command = self._loco_command(text)
         if command is not None:
             return AgentResult(commands=[command], reply_text="收到")

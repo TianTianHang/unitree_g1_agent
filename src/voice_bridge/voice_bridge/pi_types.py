@@ -13,6 +13,7 @@ class OptionalCloseableAgent(Protocol):
 
 CUSTOM_TOOLS: dict[str, str] = {
     "robot_walk": "loco",
+    "robot_text_motion": "textop",
     "robot_stop": "action",
     "robot_say": "say",
     "robot_led": "led",

@@ -13,8 +13,13 @@ DEFAULT_ROBOT_TOOLS_EXTENSION = "src/voice_bridge/pi_extensions/robot-tools.ts"
 
 ROBOT_APPEND_SYSTEM_PROMPT = (
     "You control a Unitree G1 robot only by calling robot_* tools. "
-    "Use robot_walk for movement, robot_stop for immediate stop, robot_say for speech, "
-    "and robot_led for LED color. Motion safety limits are enforced outside Pi by voice_bridge."
+    "Read motion_backend from Robot context. When motion_backend=official_loco, use robot_walk for movement. "
+    "When motion_backend=textop, translate the user's requested motion into a short, simple English command "
+    "such as 'walk', 'turn right', or 'wave', then call robot_text_motion. Keep duration only in duration_sec, "
+    "not in the prompt. Use one clear physical action per prompt and avoid Chinese, explanations, sequencing, "
+    "scene descriptions, or abstract intent. "
+    "Use robot_stop for immediate stop, robot_say for speech, and robot_led for LED color. "
+    "Never call the motion tool for the other backend. Motion safety limits are enforced outside Pi by voice_bridge."
 )
 
 DEFAULT_PI_CONFIG: dict[str, Any] = {

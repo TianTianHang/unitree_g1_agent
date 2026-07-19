@@ -38,6 +38,36 @@ const robotStop = defineTool({
 	},
 });
 
+const robotTextMotion = defineTool({
+	name: "robot_text_motion",
+	label: "Robot Text Motion",
+	description:
+		"使用 TextOp 文本动作模型控制机器人。prompt 必须是简短、简单、单一动作的英文指令，例如 walk、turn right、wave；时间只放在 duration_sec。新指令会在动作片段边界替换当前指令。",
+	promptSnippet:
+		"robot_text_motion(prompt, duration_sec): stream one short simple English TextOp motion command through voice_bridge.",
+	promptGuidelines: [
+		"Use only when Robot context motion_backend is textop.",
+		"Translate the requested physical motion into a short simple English command such as 'walk', 'turn right', or 'wave'.",
+		"Use one action per prompt. Do not use Chinese, explanations, multi-step sequences, scene descriptions, or abstract intent.",
+		"Put time only in duration_sec; do not include duration words or numbers in prompt.",
+	],
+	executionMode: "sequential",
+	parameters: Type.Object({
+		prompt: Type.String({
+			minLength: 1,
+			maxLength: 100,
+			description: "One short simple English physical-action command, for example: walk, turn right, wave.",
+		}),
+		duration_sec: Type.Number({ minimum: 0.16, maximum: 30, description: "Maximum prompt duration in seconds." }),
+	}),
+	async execute(_toolCallId, params) {
+		return {
+			content: [{ type: "text", text: `robot_text_motion accepted ${JSON.stringify(params)}` }],
+			details: params,
+		};
+	},
+});
+
 const robotSay = defineTool({
 	name: "robot_say",
 	label: "Robot Say",
@@ -75,6 +105,7 @@ const robotLed = defineTool({
 
 export default function (pi: ExtensionAPI) {
 	pi.registerTool(robotWalk);
+	pi.registerTool(robotTextMotion);
 	pi.registerTool(robotStop);
 	pi.registerTool(robotSay);
 	pi.registerTool(robotLed);

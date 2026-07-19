@@ -17,7 +17,7 @@ from voice_bridge.pi_agent import (
 )
 
 
-def make_request(safety_state: str | None = None) -> AgentRequest:
+def make_request(safety_state: str | None = None, motion_backend: str = "official_loco") -> AgentRequest:
     return AgentRequest(
         session_id="s1",
         text="向前走然后停下",
@@ -25,6 +25,7 @@ def make_request(safety_state: str | None = None) -> AgentRequest:
         robot_mode="normal",
         safety_state=safety_state,
         health_state="ok",
+        motion_backend=motion_backend,
     )
 
 
@@ -34,6 +35,7 @@ def test_build_prompt_text_includes_robot_context():
     assert "session_id: s1" in prompt
     assert "robot_mode: normal" in prompt
     assert "health_state: ok" in prompt
+    assert "motion_backend: official_loco" in prompt
     assert "User said: 向前走然后停下" in prompt
 
 
@@ -109,9 +111,27 @@ def test_finalize_drops_motion_when_safety_state_is_unsafe_but_keeps_tts_and_led
 
     finalized = _finalize_agent_result(result, make_request("estop"), VoiceBridgeConfig.default())
 
-    assert finalized.commands == [AgentCommand(kind="say", params={"text": "收到"})]
+    assert finalized.commands == [
+        AgentCommand(kind="action", params={"action": "stop"}),
+        AgentCommand(kind="say", params={"text": "收到"}),
+    ]
     assert finalized.reply_text == "我会等待"
     assert finalized.led == {"r": 1, "g": 2, "b": 3, "ttl_sec": 1.0}
+
+
+def test_finalize_textop_accepts_simple_english_and_rejects_non_english_prompt():
+    result = AgentResult(
+        commands=[
+            AgentCommand(kind="textop", params={"prompt": " turn   right ", "duration_sec": 2}),
+            AgentCommand(kind="textop", params={"prompt": "向右转", "duration_sec": 2}),
+        ]
+    )
+
+    finalized = _finalize_agent_result(result, make_request(motion_backend="textop"), VoiceBridgeConfig.default())
+
+    assert finalized.commands == [
+        AgentCommand(kind="textop", params={"prompt": "turn right", "duration_sec": 2.0})
+    ]
 
 
 def test_extract_reply_text_from_agent_end_messages():
@@ -190,6 +210,7 @@ def config_with_pi_timeouts(**timeouts) -> VoiceBridgeConfig:
     pi_config["timeouts"] = pi_timeouts
     agent["pi"] = pi_config
     return VoiceBridgeConfig(
+        motion=deepcopy(base.motion),
         voice=deepcopy(base.voice),
         motion_defaults=deepcopy(base.motion_defaults),
         agent=agent,

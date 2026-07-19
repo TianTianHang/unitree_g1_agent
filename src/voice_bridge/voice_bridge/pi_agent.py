@@ -4,6 +4,7 @@ import json
 import math
 import os
 import queue
+import re
 import signal
 import subprocess
 import threading
@@ -224,7 +225,10 @@ VALID_ACTIONS = {"stop", "cancel", "stand", "resume"}
 
 
 def _build_prompt_text(request: AgentRequest) -> str:
-    context_parts = [f"session_id: {request.session_id}"]
+    context_parts = [
+        f"session_id: {request.session_id}",
+        f"motion_backend: {request.motion_backend}",
+    ]
     if request.robot_mode:
         context_parts.append(f"robot_mode: {request.robot_mode}")
     if request.safety_state:
@@ -313,6 +317,24 @@ def _validate_led(params: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _validate_textop(params: dict[str, Any], config: VoiceBridgeConfig) -> dict[str, Any] | None:
+    prompt = params.get("prompt")
+    duration_sec = _finite_float(params.get("duration_sec"))
+    normalized_prompt = " ".join(prompt.strip().split()) if isinstance(prompt, str) else ""
+    if (
+        not normalized_prompt
+        or len(normalized_prompt) > 100
+        or re.fullmatch(r"[A-Za-z][A-Za-z -]*", normalized_prompt) is None
+        or duration_sec is None
+    ):
+        return None
+    max_duration = float(config.motion_defaults["max_textop_duration_sec"])
+    return {
+        "prompt": normalized_prompt,
+        "duration_sec": max(0.16, min(max_duration, duration_sec)),
+    }
+
+
 def _sanitize_tts(text: object) -> str | None:
     if not isinstance(text, str):
         return None
@@ -330,15 +352,27 @@ def _finalize_agent_result(result: AgentResult, request: AgentRequest, config: V
     for command in result.commands:
         if command.kind == "loco":
             params = _validate_and_clamp_loco(command.params, config)
-            if params is not None:
+            if params is not None and request.motion_backend == "official_loco":
                 motion_candidates.append(AgentCommand(kind="loco", params=params))
+        elif command.kind == "textop":
+            params = _validate_textop(command.params, config)
+            if params is not None and request.motion_backend == "textop":
+                motion_candidates.append(AgentCommand(kind="textop", params=params))
         elif command.kind == "action":
             motion_candidates.append(AgentCommand(kind="action", params=_validate_action(command.params)))
         elif command.kind == "say":
             text = _sanitize_tts(command.params.get("text"))
             if text is not None:
                 non_motion.append(AgentCommand(kind="say", params={"text": text}))
-    commands = (motion_candidates if _safety_allows_motion(request.safety_state) else []) + non_motion
+    if _safety_allows_motion(request.safety_state):
+        allowed_motion = motion_candidates
+    else:
+        allowed_motion = [
+            command
+            for command in motion_candidates
+            if command.kind == "action" and command.params.get("action") in {"stop", "cancel"}
+        ]
+    commands = allowed_motion + non_motion
     led = _validate_led(result.led) if result.led else None
     reply_text = _sanitize_tts(result.reply_text) if result.reply_text else None
     return AgentResult(commands=commands, reply_text=reply_text, led=led)

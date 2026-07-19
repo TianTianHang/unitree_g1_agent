@@ -12,7 +12,19 @@ def test_default_config_uses_internal_topics():
     assert config.topics["voice_loco"] == "/voice/cmd/loco"
     assert config.topics["voice_action"] == "/voice/cmd/action"
     assert config.agent["backend"] == "rule_based"
+    assert config.motion["backend"] == "official_loco"
     assert "宇树" in config.voice["wake_words"]
+
+
+def test_motion_backend_can_be_selected_statically():
+    config = VoiceBridgeConfig.default().with_motion_backend("textop")
+
+    assert config.motion["backend"] == "textop"
+
+
+def test_invalid_motion_backend_is_rejected():
+    with pytest.raises(ValueError, match="unsupported motion backend"):
+        VoiceBridgeConfig.default().with_motion_backend("automatic")
 
 
 def test_yaml_overrides_defaults(tmp_path: Path):
