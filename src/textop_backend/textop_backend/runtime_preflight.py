@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import importlib
-import importlib.metadata
-import hashlib
 import sys
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
 
 
 class PreflightError(RuntimeError):
@@ -21,9 +17,6 @@ class RuntimeFacts:
     cuda_device_count: int | None = None
     onnxruntime_version: str | None = None
     onnx_providers: tuple[str, ...] = ()
-    robotmdar_origin: str | None = None
-    robotmdar_version: str | None = None
-    robotmdar_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -33,8 +26,6 @@ class PreflightReport:
     torch_version: str | None = None
     onnxruntime_version: str | None = None
     onnx_providers: tuple[str, ...] = ()
-    robotmdar_version: str | None = None
-    robotmdar_digest: str | None = None
 
 
 def _python_errors(facts: RuntimeFacts) -> list[str]:
@@ -48,17 +39,10 @@ def _raise_errors(errors: list[str]) -> None:
         raise PreflightError("; ".join(errors))
 
 
-def _is_external_textop_checkout(origin: str) -> bool:
-    parts = Path(origin).expanduser().resolve().parts
-    return "TextOp" in parts and "site-packages" not in parts
-
-
 def validate_generator_runtime(
     facts: RuntimeFacts,
     *,
     device: str,
-    expected_robotmdar_version: str | None = None,
-    expected_robotmdar_digest: str | None = None,
 ) -> PreflightReport:
     errors = _python_errors(facts)
     device_index = None
@@ -72,23 +56,11 @@ def validate_generator_runtime(
         errors.append("CUDA is unavailable")
     if facts.cuda_device_count is None or facts.cuda_device_count <= 3:
         errors.append(f"cuda:3 is unavailable: device_count={facts.cuda_device_count}")
-    if not facts.robotmdar_origin:
-        errors.append("robotmdar inference distribution is not installed")
-    elif _is_external_textop_checkout(facts.robotmdar_origin):
-        errors.append(f"robotmdar resolves to external TextOp checkout: {facts.robotmdar_origin}")
-    if not facts.robotmdar_version:
-        errors.append("robotmdar distribution has no installed version metadata")
-    if expected_robotmdar_version and facts.robotmdar_version != expected_robotmdar_version:
-        errors.append(f"robotmdar version does not match lock: expected {expected_robotmdar_version}, got {facts.robotmdar_version}")
-    if expected_robotmdar_digest and facts.robotmdar_digest != expected_robotmdar_digest:
-        errors.append("robotmdar digest does not match lock")
     _raise_errors(errors)
     return PreflightReport(
         python_version=facts.python_version,
         device_index=device_index,
         torch_version=facts.torch_version,
-        robotmdar_version=facts.robotmdar_version,
-        robotmdar_digest=facts.robotmdar_digest,
     )
 
 
@@ -106,41 +78,16 @@ def validate_tracker_runtime(facts: RuntimeFacts) -> PreflightReport:
     )
 
 
-def _distribution_version(name: str, module: Any) -> str | None:
-    try:
-        return importlib.metadata.version(name)
-    except importlib.metadata.PackageNotFoundError:
-        value = getattr(module, "__version__", None)
-        return str(value) if value else None
-
-
-def _distribution_digest(name: str) -> str | None:
-    try:
-        record = importlib.metadata.distribution(name).read_text("RECORD")
-    except (importlib.metadata.PackageNotFoundError, FileNotFoundError):
-        return None
-    if not record:
-        return None
-    return hashlib.sha256(record.encode("utf-8")).hexdigest()
-
-
 def probe_generator_runtime() -> RuntimeFacts:
     try:
         torch = importlib.import_module("torch")
     except ImportError as exc:
         raise PreflightError("torch is not installed") from exc
-    try:
-        robotmdar = importlib.import_module("robotmdar")
-    except ImportError as exc:
-        raise PreflightError("robotmdar inference distribution is not installed") from exc
     return RuntimeFacts(
         python_version=sys.version_info[:3],
         torch_version=str(torch.__version__),
         cuda_available=bool(torch.cuda.is_available()),
         cuda_device_count=int(torch.cuda.device_count()),
-        robotmdar_origin=str(Path(robotmdar.__file__).resolve()),
-        robotmdar_version=_distribution_version("robotmdar", robotmdar),
-        robotmdar_digest=_distribution_digest("robotmdar"),
     )
 
 
@@ -156,14 +103,8 @@ def probe_tracker_runtime() -> RuntimeFacts:
     )
 
 
-def preflight_generator_runtime(
-    *, device: str, expected_robotmdar_version: str | None = None, expected_robotmdar_digest: str | None = None
-) -> PreflightReport:
-    return validate_generator_runtime(
-        probe_generator_runtime(), device=device,
-        expected_robotmdar_version=expected_robotmdar_version,
-        expected_robotmdar_digest=expected_robotmdar_digest,
-    )
+def preflight_generator_runtime(*, device: str) -> PreflightReport:
+    return validate_generator_runtime(probe_generator_runtime(), device=device)
 
 
 def preflight_tracker_runtime() -> PreflightReport:

@@ -1,5 +1,6 @@
 from builtin_interfaces.msg import Duration, Time
 
+from g1_agent_msgs.action import ExecuteMotion
 from g1_agent_msgs.msg import (
     ActionIntent,
     JointMotorCommand,
@@ -14,7 +15,6 @@ from g1_agent_msgs.msg import (
     ValidatedLocoCommand,
     VoiceEvent,
 )
-from g1_agent_msgs.action import ExecuteMotion
 
 
 def test_all_interfaces_construct_and_nest():

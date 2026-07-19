@@ -163,7 +163,7 @@ TextOp 控制链路只有满足以下条件才可接受 `ExecuteMotion`：
 2. 机器人原生模式已由部署流程设置为允许 `/lowcmd` 控制的模式；
 3. `/lowstate` 新鲜且至少包含 29 个有效 motor state；
 4. `/odom` 提供与 manifest `anchor_body=pelvis` 一致的位置和速度；
-5. DAR、VAE、normalization、statistics 和 ONNX 均通过 manifest SHA-256 校验；
+5. DAR、VAE、normalization、CLIP 和 ONNX 均通过 manifest SHA-256 校验；
 6. Tracker ONNX ABI 为 `obs[1,431] -> actions[1,29]`；
 7. `low_level_guard` robot/control profile 与 manifest 完全一致；
 8. 系统内 `/lowcmd` publisher 只有 `low_level_guard`。

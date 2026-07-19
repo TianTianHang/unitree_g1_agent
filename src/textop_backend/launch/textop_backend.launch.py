@@ -15,10 +15,6 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "manifest_path", default_value=os.path.join(share, "config", "textop_pretrained.yaml")
         ),
-        DeclareLaunchArgument(
-            "skeleton_asset_root",
-            default_value="/home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/description/robots/g1",
-        ),
         DeclareLaunchArgument("device", default_value="cuda:3"),
     ]
     return LaunchDescription(arguments + [
@@ -27,7 +23,6 @@ def generate_launch_description():
             name="textop_generator_node", output="screen",
             parameters=[generator_config, {
                 "manifest_path": LaunchConfiguration("manifest_path"),
-                "skeleton_asset_root": LaunchConfiguration("skeleton_asset_root"),
                 "device": LaunchConfiguration("device"),
             }],
         ),

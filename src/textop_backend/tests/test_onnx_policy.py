@@ -35,6 +35,7 @@ class _OrtModule:
         return self._available
 
     def InferenceSession(self, path, providers):
+        self.providers = providers
         session = FakeSession()
         session.get_providers = lambda: self._session_providers
         return session
@@ -92,3 +93,51 @@ def test_load_policy_rejects_runtime_provider_fallback(monkeypatch, tmp_path):
             input_name="obs", output_name="actions",
             providers=["CUDAExecutionProvider"],
         )
+
+
+def test_preload_cuda_libraries_loads_cudnn8_with_global_symbols(monkeypatch, tmp_path):
+    import textop_backend.onnx_policy as module
+    from textop_backend.onnx_policy import preload_cuda_libraries
+
+    library = tmp_path / "libcudnn.so.8"
+    component = tmp_path / "libcudnn_ops_infer.so.8"
+    library.touch()
+    component.touch()
+    loaded = []
+    monkeypatch.setattr(module.ctypes, "CDLL", lambda path, mode: loaded.append((path, mode)))
+
+    preload_cuda_libraries([str(tmp_path)])
+
+    assert [path for path, _ in loaded] == [str(library), str(component)]
+    assert all(mode == module.ctypes.RTLD_GLOBAL for _, mode in loaded)
+
+
+def test_preload_cuda_libraries_rejects_unresolved_environment_variable(monkeypatch):
+    from textop_backend.onnx_policy import preload_cuda_libraries
+
+    monkeypatch.delenv("TEXTOP_MISSING_CUDNN_DIR", raising=False)
+    with pytest.raises(PolicyError, match="unresolved environment variable"):
+        preload_cuda_libraries(["${TEXTOP_MISSING_CUDNN_DIR}"])
+
+
+def test_load_policy_passes_explicit_cuda_device_id(monkeypatch, tmp_path):
+    import textop_backend.onnx_policy as module
+
+    ort = _OrtModule(
+        ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        ["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
+    monkeypatch.setitem(__import__("sys").modules, "onnxruntime", ort)
+
+    module.load_onnx_policy(
+        str(tmp_path / "policy.onnx"),
+        input_name="obs",
+        output_name="actions",
+        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        cuda_device_id=3,
+    )
+
+    assert ort.providers == [
+        ("CUDAExecutionProvider", {"device_id": 3}),
+        "CPUExecutionProvider",
+    ]

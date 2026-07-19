@@ -29,7 +29,6 @@ def _construct_backend(context):
     if plan["start_textop"]:
         actions.append(_include("textop_backend", "textop_backend.launch.py", {
             "manifest_path": LaunchConfiguration("textop_manifest_path"),
-            "skeleton_asset_root": LaunchConfiguration("textop_skeleton_asset_root"),
             "device": LaunchConfiguration("textop_device"),
         }))
     if plan["start_low_level_guard"]:
@@ -45,10 +44,6 @@ def generate_launch_description():
             default_value=PathJoinSubstitution(
                 [FindPackageShare("textop_backend"), "config", "textop_pretrained.yaml"]
             ),
-        ),
-        DeclareLaunchArgument(
-            "textop_skeleton_asset_root",
-            default_value="/home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/description/robots/g1",
         ),
         DeclareLaunchArgument("textop_device", default_value="cuda:3"),
         OpaqueFunction(function=_construct_backend),

@@ -2,6 +2,9 @@ textop_tracker_node:
   ros__parameters:
     manifest_path: ""
     onnx_providers: ["CUDAExecutionProvider"]
+    cuda_device_id: 3
+    cuda_library_dirs:
+      - "${TEXTOP_CUDNN_LIB_DIR}"
     reference_topic: "/g1/textop/reference"
     lease_topic: "/g1/low_level/lease"
     candidate_topic: "/g1/low_level/candidate"

@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-
 FloatArray = NDArray[np.float32]
 
 
@@ -81,10 +80,16 @@ def build_observation(
 ) -> FloatArray:
     robot_q_inv = _quat_conjugate(state.anchor_orientation_wxyz)
     relative_positions = np.stack(
-        [_quat_rotate_inverse(state.anchor_orientation_wxyz, item - state.anchor_position_w) for item in future_anchor_position_w]
+        [
+            _quat_rotate_inverse(state.anchor_orientation_wxyz, item - state.anchor_position_w)
+            for item in future_anchor_position_w
+        ]
     )
     relative_orientations = np.stack(
-        [_matrix_from_quat(_quat_multiply(robot_q_inv, item))[:, :2].reshape(-1) for item in future_anchor_orientation_wxyz]
+        [
+            _matrix_from_quat(_quat_multiply(robot_q_inv, item))[:, :2].reshape(-1)
+            for item in future_anchor_orientation_wxyz
+        ]
     )
     projected_gravity = _quat_rotate_inverse(
         state.anchor_orientation_wxyz, np.array([0.0, 0.0, -1.0], dtype=np.float32)
@@ -127,7 +132,7 @@ def decode_action(
     raw_unitree[np.asarray(isaaclab_to_unitree, dtype=np.int64)] = raw_action_isaaclab
     zeros = np.zeros(29, dtype=np.float32)
     return MotorCommand(
-        q=default_q_unitree + raw_unitree * action_scale_unitree,
+        q=np.asarray(default_q_unitree + raw_unitree * action_scale_unitree, dtype=np.float32),
         dq=zeros.copy(),
         tau=zeros.copy(),
         kp=np.asarray(kp_unitree, dtype=np.float32).copy(),

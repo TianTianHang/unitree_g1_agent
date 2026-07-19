@@ -1,8 +1,6 @@
 textop_generator_node:
   ros__parameters:
     manifest_path: ""
-    skeleton_asset_root: ""
-    robotmdar_lock_path: ""
     device: "cuda:3"
     guidance_scale: 2.5
     compile_backend: ""

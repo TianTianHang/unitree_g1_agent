@@ -83,21 +83,25 @@ low_level_guard_node
 
 ## 推理运行环境
 
-### 单一项目环境
+### 隔离的项目环境
 
-项目继续使用 `.venv-ros`，其解释器固定为 `/usr/bin/python3` 对应的 Python 3.10，并启用
-ROS Humble 所需的 system site-packages。TextOp 依赖作为独立 uv dependency group 管理：
+常规 ROS 开发、测试和静态检查使用 `.venv-ros`。TextOp 推理使用独立的
+`.venv-textop`；两个环境都固定为 `/usr/bin/python3` 对应的 Python 3.10，并启用 ROS Humble
+所需的 system site-packages。TextOp 依赖作为独立 uv dependency group 管理：
 
 ```text
 dependency-groups.textop
   torch + CUDA runtime
   onnxruntime-gpu
   openai-clip
-  hydra-core
-  omegaconf
-  scipy / transforms3d 等模型运行依赖
-  robotmdar inference distribution
+  PyYAML / einops / scipy 等模型运行依赖
 ```
+
+当前机器使用 NVIDIA driver 520 和 CUDA 11.8，因此 TextOp group 固定为
+`torch==2.5.1+cu118`、`torchvision==0.20.1+cu118`、`onnxruntime-gpu==1.17.1` 和
+`numpy==1.26.4`。ORT 1.17.1 需要 cuDNN 8，而 Torch 使用 cuDNN 9；`make bootstrap-textop`
+会在项目 `.unitree/textop-cudnn8-venv` 中创建一个独立、锁定的 cuDNN 8 runtime，Tracker
+仅在创建 ONNX session 前预加载该目录，Generator 不加载它。
 
 普通开发和非 TextOp CI 不强制安装大体积 GPU 依赖；部署或 GPU smoke test 使用显式命令：
 
@@ -106,24 +110,22 @@ make bootstrap-textop
 make build-textop
 ```
 
-`build-textop` 必须让 `colcon` 自身运行在 `.venv-ros` 解释器中，使安装后的
+`build-textop` 必须让 `colcon` 自身运行在 `.venv-textop` 解释器中，使安装后的
 `textop_generator_node` 和 `textop_tracker_node` console script shebang 指向同一环境。
 只在 shell 中临时修改 `PYTHONPATH` 不算有效部署方案。
 
-### RobotMDAR 依赖边界
+### TextOp 推理源码边界
 
-本仓库拥有推理编排、状态机、连续 primitive、重建调用和 ROS adapter。模型网络定义作为
-固定版本的 inference distribution 安装，但不得：
+本仓库拥有推理编排、状态机、连续 primitive、模型网络、diffusion、motion feature 重建
+和 ROS adapter。推理源码直接位于 `textop_backend.textop_model`，不得：
 
 - 从 `/home/ubuntu/Desktop/TextOp` 或其他 checkout 直接 import；
 - 使用 editable install、`.pth` 路径注入或 launch 前临时 `PYTHONPATH`；
 - 启动外部 TextOp deploy/train 脚本；
 - 在运行时从网络下载代码或模型。
 
-RobotMDAR inference distribution 必须有确定版本、来源提交和 SHA-256。构建产物可以来自经
-审查源码生成的 wheel，但 wheel/lock 信息必须归项目管理。若现有 RobotMDAR 包无法隔离
-训练依赖，应提取只包含当前 checkpoint 所需网络定义和数据重建逻辑的 inference package，
-而不是把整个外部仓库加入运行路径。
+checkpoint、VAE、mean/std、CLIP 和 ONNX 仍是 manifest 管理的外部制品，必须校验路径与
+SHA-256。外部 TextOp 仓库只可作为实现对照和权重存储位置，不是 Python 运行时依赖。
 
 ### 启动环境自检
 
@@ -136,7 +138,6 @@ torch.cuda.is_available()
 requested device == cuda:3
 CUDA device count > 3
 onnxruntime has CUDAExecutionProvider
-robotmdar distribution version/digest matches lock
 manifest assets and hashes valid
 ONNX ABI == [1,431] -> [1,29]
 ```
@@ -274,7 +275,7 @@ environment preflight
 
 ### 启动测试
 
-- console script 的解释器属于项目 `.venv-ros`；
+- console script 的解释器属于项目 `.venv-textop`；
 - `motion_backend:=textop` 能同时 import Torch、RobotMDAR 和 ONNX Runtime；
 - GPU 固定为 3，CUDA provider 生效；
 - graph 中无 `/api/sport/request` publisher；

@@ -26,10 +26,37 @@ asr = [
   "faster-whisper==1.2.1",
   "torch==2.7.1",
 ]
+textop = [
+  "einops==0.8.1",
+  "numpy==1.26.4",
+  "onnxruntime-gpu==1.17.1",
+  "openai-clip==1.0.1",
+  "pytest==8.3.5",
+  "torch==2.5.1",
+  "torchvision==0.20.1",
+]
+textop_cudnn8 = [
+  "nvidia-cudnn-cu11==8.9.6.50",
+]
 
 [tool.uv]
 package = false
 default-groups = ["test", "debug", "lint"]
+conflicts = [
+  [{ group = "asr" }, { group = "textop" }],
+  [{ group = "test" }, { group = "textop" }],
+  [{ group = "textop" }, { group = "textop_cudnn8" }],
+  [{ group = "asr" }, { group = "textop_cudnn8" }],
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchvision = { index = "pytorch-cu118" }
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
 
 [tool.pytest.ini_options]
 testpaths = ["src"]
@@ -39,6 +66,7 @@ addopts = "-ra --import-mode=importlib"
 target-version = "py310"
 line-length = 120
 src = ["src"]
+exclude = ["src/textop_backend/textop_backend/textop_model"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
@@ -58,8 +86,9 @@ include = [
   "src/asr_node/asr_node",
   "src/g1_interface/g1_interface",
   "src/safety_control/safety_control",
+  "src/textop_backend/textop_backend",
   "src/voice_bridge/voice_bridge",
   "src/voice_bridge_debug/voice_bridge_debug",
 ]
-exclude = ["build", "install", "log", ".unitree"]
+exclude = ["build", "install", "log", ".unitree", "src/textop_backend/textop_backend/textop_model"]
 reportMissingImports = false

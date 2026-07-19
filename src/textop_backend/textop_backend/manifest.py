@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import hmac
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +23,8 @@ class AssetManifest:
 class GeneratorManifest:
     checkpoint: AssetManifest
     vae: AssetManifest
-    statistics: AssetManifest
     normalization: AssetManifest
+    clip: AssetManifest
 
 
 @dataclass(frozen=True)
@@ -139,8 +139,13 @@ def load_manifest(path: Path | str, *, verify_assets: bool = True) -> ModelManif
     generator = GeneratorManifest(
         checkpoint=_asset(manifest_path, generator_raw.get("checkpoint"), "generator.checkpoint", verify_assets),
         vae=_asset(manifest_path, generator_raw.get("vae"), "generator.vae", verify_assets),
-        statistics=_asset(manifest_path, generator_raw.get("statistics"), "generator.statistics", verify_assets),
-        normalization=_asset(manifest_path, generator_raw.get("normalization"), "generator.normalization", verify_assets),
+        normalization=_asset(
+            manifest_path,
+            generator_raw.get("normalization"),
+            "generator.normalization",
+            verify_assets,
+        ),
+        clip=_asset(manifest_path, generator_raw.get("clip"), "generator.clip", verify_assets),
     )
     frequency = float(raw.get("control_frequency", 0.0))
     reference = raw.get("reference", {})

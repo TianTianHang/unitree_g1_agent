@@ -1,10 +1,9 @@
-from pathlib import Path
 import hashlib
+from pathlib import Path
 
 import pytest
 
 from textop_backend.manifest import ManifestError, load_manifest
-
 
 ISAACLAB = [f"joint_{index}" for index in range(29)]
 UNITREE = list(reversed(ISAACLAB))
@@ -28,8 +27,8 @@ def _manifest() -> dict:
         "generator": {
             "checkpoint": {"path": "ckpt.pth", "sha256": "b" * 64},
             "vae": {"path": "vae.pth", "sha256": "c" * 64},
-            "statistics": {"path": "action_statistics.json", "sha256": "d" * 64},
             "normalization": {"path": "meanstd.pkl", "sha256": "e" * 64},
+            "clip": {"path": "ViT-B-32.pt", "sha256": "f" * 64},
         },
         "joint_names": {"isaaclab": list(ISAACLAB), "unitree": list(UNITREE)},
         "default_q": [0.0] * 29,
@@ -57,6 +56,8 @@ def test_load_manifest_builds_joint_bijection(tmp_path: Path):
     assert manifest.control_period == pytest.approx(0.02)
     assert manifest.isaaclab_to_unitree == tuple(reversed(range(29)))
     assert manifest.generator.checkpoint.path == tmp_path / "ckpt.pth"
+    assert manifest.generator.clip.path == tmp_path / "ViT-B-32.pt"
+    assert not hasattr(manifest.generator, "statistics")
 
 
 def test_manifest_rejects_duplicate_joint_names(tmp_path: Path):
@@ -113,7 +114,7 @@ def test_manifest_rejects_non_hex_digest(tmp_path: Path):
         load_manifest(path, verify_assets=False)
 
 
-@pytest.mark.parametrize("asset_name", ["checkpoint", "vae", "statistics", "normalization"])
+@pytest.mark.parametrize("asset_name", ["checkpoint", "vae", "normalization", "clip"])
 def test_manifest_verifies_every_generator_asset(tmp_path: Path, asset_name: str):
     import yaml
 

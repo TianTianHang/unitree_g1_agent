@@ -25,6 +25,7 @@ jobs:
       - run: make bootstrap
       - run: make build
       - run: make test
+      - run: make check-textop-core
       - run: make test-integration
       - run: make frontend
       - run: make lint

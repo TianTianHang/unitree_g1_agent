@@ -1,3 +1,7 @@
+# rclpy Parameter.value is typed as optional/unknown in Humble although declared
+# parameters below always have concrete defaults.
+# pyright: reportArgumentType=false
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -28,7 +32,6 @@ from .manifest import load_manifest
 from .readiness import ReadinessGate
 from .robotmdar_runtime import RobotMDARRuntime
 from .runtime_preflight import preflight_generator_runtime
-from .runtime_lock import load_robotmdar_lock
 from .stop_gate import StopGate, StopToken, validated_stop_action
 
 
@@ -40,8 +43,7 @@ class TextOpGeneratorNode(Node):
     def __init__(self) -> None:
         super().__init__("textop_generator_node")
         parameters = (
-            ("manifest_path", ""), ("skeleton_asset_root", ""),
-            ("robotmdar_lock_path", ""),
+            ("manifest_path", ""),
             ("device", "cuda:3"), ("guidance_scale", 2.5), ("compile_backend", ""),
             ("action_name", "/g1/textop/execute_motion"),
             ("reference_topic", "/g1/textop/reference"),
@@ -54,34 +56,28 @@ class TextOpGeneratorNode(Node):
         for name, default in parameters:
             self.declare_parameter(name, default)
         manifest_path = str(self.get_parameter("manifest_path").value)
-        skeleton_root = str(self.get_parameter("skeleton_asset_root").value)
-        if not manifest_path or not skeleton_root:
-            raise RuntimeError("manifest_path and skeleton_asset_root are required")
+        if not manifest_path:
+            raise RuntimeError("manifest_path is required")
         device = str(self.get_parameter("device").value)
-        lock_path = str(self.get_parameter("robotmdar_lock_path").value)
-        lock = load_robotmdar_lock(lock_path) if lock_path else (None, None)
-        report = preflight_generator_runtime(
-            device=device, expected_robotmdar_version=lock[0], expected_robotmdar_digest=lock[1]
-        )
+        report = preflight_generator_runtime(device=device)
         self.get_logger().info(
             f"TextOp generator preflight passed: python={report.python_version} "
             f"torch={report.torch_version} device=cuda:{report.device_index} "
-            f"robotmdar={report.robotmdar_version}"
+            "local_inference=true"
         )
         self.manifest = load_manifest(manifest_path)
         runtime = RobotMDARRuntime(
             self.manifest.generator.checkpoint.path,
             vae=self.manifest.generator.vae.path,
-            statistics=self.manifest.generator.statistics.path,
             normalization=self.manifest.generator.normalization.path,
-            skeleton_asset_root=skeleton_root,
+            clip_weights=self.manifest.generator.clip.path,
             device=device,
             guidance_scale=float(self.get_parameter("guidance_scale").value),
             compile_backend=str(self.get_parameter("compile_backend").value),
         )
         self.engine = GeneratorEngine(runtime)
         self.session = GeneratorSession(future_len=runtime.future_len, dt=runtime.dt)
-        self._worker = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="robotmdar")
+        self._worker = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="textop_inference")
         self._lock = threading.RLock()
         self._active_request_id: str | None = None
         self._stop_gate = StopGate()
@@ -175,7 +171,11 @@ class TextOpGeneratorNode(Node):
         try:
             self.session.begin(request_id, duration_seconds=_duration_seconds(goal.duration))
             self._raise_if_cancelled(goal_handle, request_id, stop_token)
-            token = self._await_future(goal_handle, self._worker.submit(self.engine.begin, request_id, goal.prompt), "loading")
+            token = self._await_future(
+                goal_handle,
+                self._worker.submit(self.engine.begin, request_id, goal.prompt),
+                "loading",
+            )
             self._raise_if_cancelled(goal_handle, request_id, stop_token)
             for primitive_index in range(self.session.required_primitives):
                 end = primitive_index == self.session.required_primitives - 1

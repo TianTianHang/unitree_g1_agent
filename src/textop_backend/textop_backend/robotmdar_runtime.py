@@ -12,146 +12,184 @@ class RobotMDARError(RuntimeError):
     pass
 
 
+def _textop_model_configs() -> tuple[dict[str, Any], dict[str, Any]]:
+    vae = {
+        "nfeats": 57,
+        "latent_dim": [1, 128],
+        "h_dim": 512,
+        "ff_size": 1024,
+        "num_layers": 9,
+        "num_heads": 4,
+        "dropout": 0.1,
+        "arch": "all_encoder",
+        "normalize_before": False,
+        "activation": "gelu",
+        "position_embedding": "learned",
+    }
+    denoiser = {
+        "h_dim": 512,
+        "ff_size": 1024,
+        "num_layers": 8,
+        "num_heads": 4,
+        "dropout": 0.1,
+        "activation": "gelu",
+        "clip_dim": 512,
+        "history_shape": [2, 57],
+        "noise_shape": [1, 128],
+        "cond_mask_prob": 0.1,
+    }
+    return vae, denoiser
+
+
+def _textop_dof_velocity(dof: Any, *, dt: float) -> Any:
+    if dof.shape[0] < 3:
+        raise RobotMDARError("TextOp primitive 至少需要 3 帧才能计算 DOF velocity")
+    velocity = (dof[1:] - dof[:-1]) / dt
+    result = dof.new_empty(dof.shape)
+    result[:-1] = velocity
+    result[-1] = velocity[-2]
+    return result
+
+
 class RobotMDARRuntime:
-    """RobotMDAR model adapter with inference orchestration owned by this repository."""
+    """项目内 TextOp 推理运行时；类名暂时保留以兼容 generator。"""
 
     dt = 0.02
 
-    def __init__(
-        self,
-        checkpoint: str | Path,
-        *,
-        vae: str | Path,
-        statistics: str | Path,
-        normalization: str | Path,
-        skeleton_asset_root: str | Path,
-        device: str = "cuda",
-        guidance_scale: float = 2.5,
-        compile_backend: str = "",
-    ) -> None:
+    def __init__(self, checkpoint: str | Path, *, vae: str | Path,
+                 normalization: str | Path, clip_weights: str | Path,
+                 device: str = "cuda:3",
+                 guidance_scale: float = 2.5, compile_backend: str = "") -> None:
         try:
             import torch
-            from hydra.utils import instantiate
-            from omegaconf import OmegaConf
-            from robotmdar.dtype import seed
-            from robotmdar.dtype.motion import get_zero_abs_pose, get_zero_feature, motion_dict_to_abs_pose
-            from robotmdar.model.clip import load_and_freeze_clip
-            from robotmdar.train.manager import DARManager
-        except ImportError as exc:
-            raise RobotMDARError("robotmdar runtime dependencies are not installed") from exc
 
+            from .textop_model.diffusion.gaussian_diffusion import (
+                GaussianDiffusion,
+                LossType,
+                ModelMeanType,
+                ModelVarType,
+                get_named_beta_schedule,
+            )
+            from .textop_model.model.mld_denoiser import DenoiserTransformer
+            from .textop_model.model.mld_vae import AutoMldVae
+            from .textop_model.motion import feature_v3_to_motion, motion_to_absolute_pose, zero_feature
+        except ImportError as exc:
+            raise RobotMDARError("本地 TextOp 推理依赖不可用") from exc
         self.torch = torch
-        self._motion_dict_to_abs_pose = motion_dict_to_abs_pose
-        self._get_zero_abs_pose = get_zero_abs_pose
-        self._get_zero_feature = get_zero_feature
-        checkpoint = Path(checkpoint).resolve()
-        vae = Path(vae).resolve()
-        statistics = Path(statistics).resolve()
-        normalization = Path(normalization).resolve()
-        if normalization.name != "meanstd.pkl" or normalization.parent != statistics.parent:
-            raise RobotMDARError("normalization must be meanstd.pkl beside action statistics")
-        config_path = checkpoint.parent / ".hydra" / "config.yaml"
-        if not config_path.is_file():
-            config_path = checkpoint.parent / "config.yaml"
-        cfg = OmegaConf.load(config_path)
-        cfg.device = device
-        cfg.ckpt.dar = str(checkpoint)
-        cfg.ckpt.vae = str(vae)
-        cfg.train.manager.device = device
-        cfg.train.manager.save_dir = str(checkpoint.parent)
-        cfg.train.manager.platform._target_ = "robotmdar.train.train_platforms.NoPlatform"
-        cfg.data.datadir = str(normalization.parent)
-        cfg.data.action_statistics_path = str(statistics)
-        cfg.data.val.datadir = cfg.data.datadir
-        cfg.data.val.action_statistics_path = cfg.data.action_statistics_path
-        cfg.data.val.split = "none"
-        cfg.data.val.batch_size = 1
-        cfg.skeleton.asset.assetRoot = str(Path(skeleton_asset_root).resolve())
-        if int(cfg.data.history_len) != 2 or int(cfg.data.future_len) != 8 or int(cfg.diffusion.num_timesteps) != 5:
-            raise RobotMDARError("checkpoint is not compatible with TextOp v1")
-        seed.set(int(cfg.seed))
-        self.device = device
-        self.history_len = int(cfg.data.history_len)
-        self.future_len = int(cfg.data.future_len)
+        self._feature_v3_to_motion = feature_v3_to_motion
+        self._motion_to_absolute_pose = motion_to_absolute_pose
+        self._zero_feature = zero_feature
+        self.device = torch.device(device)
+        if self.device.type != "cuda" or self.device.index != 3:
+            raise RobotMDARError("TextOp 推理必须使用 cuda:3")
+        self.history_len = 2
+        self.future_len = 8
+        steps = 5
         self.guidance_scale = float(guidance_scale)
-        self.dataset = instantiate(cfg.data.val)
-        self.vae = instantiate(cfg.vae).to(device).eval()
-        denoiser = instantiate(cfg.denoiser).to(device).eval()
-        schedule_sampler = instantiate(cfg.diffusion.schedule_sampler)
-        self.diffusion = schedule_sampler.diffusion
-        manager: DARManager = instantiate(cfg.train.manager)
-        manager.hold_model(self.vae, denoiser, None, self.dataset)
+        self.mean, self.std = self._load_stats(normalization)
+        self.mean = self.mean.to(self.device).reshape(1, 1, -1)
+        self.std = self.std.to(self.device).reshape(1, 1, -1).clamp_min(1e-8)
+        vae_cfg, den_cfg = _textop_model_configs()
+        self.vae = AutoMldVae(**vae_cfg).to(self.device).eval()
+        self.denoiser = DenoiserTransformer(**den_cfg).to(self.device).eval()
+        self._load_state(self.vae, vae, preferred=("vae", "model"))
+        self._load_state(self.denoiser, checkpoint, preferred=("denoiser", "model"))
         if compile_backend:
             self.vae = torch.compile(self.vae, backend=compile_backend)
-            denoiser = torch.compile(denoiser, backend=compile_backend)
-        self.denoiser = _ClassifierFreeDenoiser(denoiser)
-        self.clip_model = load_and_freeze_clip("ViT-B/32", device=device)
+            self.denoiser = torch.compile(self.denoiser, backend=compile_backend)
+        self.diffusion = GaussianDiffusion(
+            betas=get_named_beta_schedule("cosine", steps),
+            model_mean_type=ModelMeanType.START_X,
+            model_var_type=ModelVarType.FIXED_SMALL,
+            loss_type=LossType.MSE,
+            rescale_timesteps=False,
+        )
+        self.clip_model = self._load_clip(Path(clip_weights).resolve())
+
+    @staticmethod
+    def _load_stats(path: str | Path):
+        import torch
+        obj = torch.load(Path(path), map_location="cpu")
+        if isinstance(obj, tuple | list) and len(obj) == 2:
+            return obj[0].float(), obj[1].float()
+        if isinstance(obj, dict) and "mean" in obj and "std" in obj:
+            return torch.as_tensor(obj["mean"]).float(), torch.as_tensor(obj["std"]).float()
+        raise RobotMDARError("meanstd.pkl 必须包含 (mean, std)")
+
+    def _load_state(self, model: Any, path: str | Path, *, preferred: tuple[str, ...]) -> None:
+        state = self.torch.load(Path(path), map_location="cpu")
+        if isinstance(state, dict):
+            for key in (*preferred, "state_dict"):
+                if isinstance(state.get(key), dict):
+                    state = state[key]
+                    break
+        if not isinstance(state, dict):
+            raise RobotMDARError(f"无法读取模型权重: {path}")
+        try:
+            model.load_state_dict(state, strict=True)
+        except RuntimeError as exc:
+            raise RobotMDARError(f"模型权重 ABI 不匹配: {path}") from exc
+
+    @staticmethod
+    def _load_clip(clip_weights: Path):
+        try:
+            import clip
+            return clip.load(str(clip_weights), device="cuda:3", jit=False)[0].eval()
+        except Exception as exc:
+            raise RobotMDARError("CLIP 不可用，无法进行文本编码") from exc
+
+    def _normalize(self, value):
+        return (value - self.mean) / self.std
+
+    def _denormalize(self, value):
+        return value * self.std + self.mean
 
     def initial_state(self) -> tuple[Any, Any]:
-        torch = self.torch
-        zero = self._get_zero_feature().reshape(1, 1, -1).repeat(1, self.history_len, 1).to(self.device)
-        history = self.dataset.normalize(zero)
-        pose = self._get_zero_abs_pose((1,), device=self.device)
+        history = self._normalize(self._zero_feature(1, self.history_len, 57, self.device))
+        pose = {
+            "root_trans_offset": self.torch.tensor([[0.0, 0.0, 0.77]], device=self.device),
+            "root_rot": self.torch.tensor([[0.0, 0.0, 0.0, 1.0]], device=self.device),
+        }
         return history, pose
 
     def encode_text(self, prompt: str) -> Any:
-        try:
-            import clip
-        except ImportError as exc:
-            raise RobotMDARError("the CLIP package is not installed") from exc
+        import clip
         with self.torch.no_grad():
-            tokens = clip.tokenize([prompt]).to(self.device)
-            return self.clip_model.encode_text(tokens).float()
+            return self.clip_model.encode_text(clip.tokenize([prompt]).to(self.device)).float()
 
     def generate(self, embedding: Any, history: Any, absolute_pose: Any) -> PrimitiveResult:
         torch = self.torch
         with torch.no_grad():
-            latent_shape = (embedding.shape[0], *self.denoiser.noise_shape)
             conditioning = {
                 "text_embedding": embedding,
                 "history_motion_normalized": history,
                 "scale": self.guidance_scale,
             }
-            latent = self.diffusion.p_sample_loop(
-                self.denoiser,
-                latent_shape,
-                clip_denoised=False,
-                model_kwargs={"y": conditioning},
-                skip_timesteps=0,
-                init_image=None,
-                progress=False,
-                dump_steps=None,
-                noise=None,
-                const_noise=False,
+            latent: Any = self.diffusion.p_sample_loop(
+                _ClassifierFreeDenoiser(self.denoiser),
+                (embedding.shape[0], 1, 128), clip_denoised=False,
+                model_kwargs={"y": conditioning}, progress=False,
             )
             future = self.vae.decode(latent.permute(1, 0, 2), history, nfuture=self.future_len)
-            motion = self.dataset.reconstruct_motion(
-                torch.cat([history, future], dim=1), abs_pose=absolute_pose, ret_fk=True, ret_fk_full=False
-            )
-            next_pose = self._motion_dict_to_abs_pose(motion, idx=-2)
-            dof_position = motion.get("dof_pos", motion.get("dof"))
-            dof_velocity = motion.get("dof_vel")
-            if dof_position is None or dof_velocity is None:
-                raise RobotMDARError("reconstructed motion does not contain joint position and velocity")
+            features = self._denormalize(torch.cat((history, future), dim=1))
+            motion = self._feature_v3_to_motion(features, absolute_pose)
+            next_pose = self._motion_to_absolute_pose(motion, idx=-2)
+            dof = motion["dof"][0]
+            velocity = _textop_dof_velocity(dof, dt=self.dt)
             return PrimitiveResult(
-                future_motion=future[:, -self.history_len :, :],
-                absolute_pose=next_pose,
-                dof_position=dof_position[0].detach().cpu().numpy().astype(np.float32),
-                dof_velocity=dof_velocity[0].detach().cpu().numpy().astype(np.float32),
-                anchor_position=motion["root_trans_offset"][0].detach().cpu().numpy().astype(np.float32),
-                anchor_orientation_xyzw=motion["root_rot"][0].detach().cpu().numpy().astype(np.float32),
+                future_motion=future[:, -self.history_len:], absolute_pose=next_pose,
+                dof_position=dof.cpu().numpy().astype(np.float32),
+                dof_velocity=velocity.cpu().numpy().astype(np.float32),
+                anchor_position=motion["root_trans_offset"][0].cpu().numpy().astype(np.float32),
+                anchor_orientation_xyzw=motion["root_rot"][0].cpu().numpy().astype(np.float32),
             )
 
 
 class _ClassifierFreeDenoiser:
     def __init__(self, model: Any) -> None:
         if float(model.cond_mask_prob) <= 0:
-            raise RobotMDARError("denoiser was not trained for classifier-free guidance")
+            raise RobotMDARError("denoiser 未启用 classifier-free guidance")
         self.model = model
-
-    @property
-    def noise_shape(self):
-        return self.model.noise_shape
 
     def parameters(self):
         return self.model.parameters()
@@ -161,6 +199,6 @@ class _ClassifierFreeDenoiser:
         conditional["uncond"] = False
         unconditional = dict(y)
         unconditional["uncond"] = True
-        conditioned = self.model(x, timesteps, conditional)
         unconditioned = self.model(x, timesteps, unconditional)
+        conditioned = self.model(x, timesteps, conditional)
         return unconditioned + y["scale"] * (conditioned - unconditioned)

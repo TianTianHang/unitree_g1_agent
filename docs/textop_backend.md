@@ -6,7 +6,8 @@ TextOp 后端内部推理与控制契约。
 
 本文定义本仓库内 TextOp 推理与控制实现的架构真相。实现不得启动、导入或通过
 `PYTHONPATH` 引用相邻 `../TextOp` 工作树中的部署脚本。模型权重和统计数据是受
-manifest 管理的外部资产；RobotMDAR 模型运行库是固定版本的安装依赖。
+manifest 管理的外部资产；推理网络、diffusion 和 motion feature 重建代码直接维护在
+本仓库 `textop_backend.textop_model` 中，不安装独立的 RobotMDAR package/wheel。
 
 ## 责任边界
 
@@ -42,9 +43,9 @@ prompt → CLIP ViT-B/32 → diffusion denoiser → VAE decode
 连续生成必须跨 primitive 保存最后 2 帧 normalized feature 和 `abs_pose`。异步结果必须
 携带 request ID；已取消或已被新请求替换的结果不得进入 reference buffer。
 
-本仓库重写 ROS 编排、状态机、采样调用、重建与数据转换，不复用 TextOpDeploy 的
-`rmdar.py`。网络定义来自固定版本的已安装 `robotmdar` 包，不复制训练器和 IsaacLab
-训练环境。
+本仓库重写 ROS 编排、状态机、模型构造、diffusion 采样、重建与数据转换，不复用
+TextOpDeploy 的 `rmdar.py`，运行时也不导入外部 `robotmdar`。内置源码只保留当前
+checkpoint 推理所需网络定义与算子，不纳入训练器和 IsaacLab 训练环境。
 
 ## MotionReferenceSegment
 
@@ -108,7 +109,7 @@ kp, kd = model manifest
 - ONNX 路径、SHA-256、输入输出名称及 shape；
 - IsaacLab 与 Unitree 两套 29 关节名称；
 - Unitree order 的 `default_q`、`action_scale`、`kp`、`kd`；
-- RobotMDAR checkpoint、VAE、normalization statistics 和各自 SHA-256；
+- RobotMDAR checkpoint、VAE、normalization、CLIP ViT-B/32 和各自 SHA-256；
 - `future_steps=5`、与训练配置一致的 `anchor_body`、`quaternion_order=wxyz`。
 
 当前 `latest.onnx` 对应训练配置中的 `anchor_body_name` 是 `pelvis`，所以实机状态必须使用
@@ -121,13 +122,13 @@ pelvis/base 的位置和姿态构造相对 anchor observation；不能把 torso 
 
 - RobotMDAR `ckpt_200000.pth`；
 - RobotMDAR `vae.pth`；
-- RobotMDAR `action_statistics.json`；
 - RobotMDAR 实际用于 57 维归一化的 `meanstd.pkl`；
+- OpenAI CLIP `ViT-B-32.pt`；
 - Tracker `latest.onnx`，ABI 为 `obs[1,431] → actions[1,29]`。
 
 Generator 和 Tracker 启动时读取同一个 manifest，并在加载模型前逐个验证 SHA-256。
-组合 launch 默认使用该 manifest；`skeleton_asset_root` 默认指向 TextOpRobotMDAR 的 G1
-description 目录，部署到其他机器时应显式覆盖这两个路径。
+组合 launch 默认使用该 manifest。部署到其他机器时必须同步复制制品并更新 manifest
+路径与 SHA-256。
 
 启动时必须先验证 manifest、文件 hash、shape、关节双射和所有数值。验证失败时不得申请
 low-level lease。

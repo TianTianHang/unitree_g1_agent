@@ -9,7 +9,6 @@ from numpy.typing import NDArray
 from .generator import GenerationToken, GeneratorStateMachine
 from .reference import MotionReferenceSegment
 
-
 FloatArray = NDArray[np.float32]
 MUJOCO_TO_ISAACLAB = np.asarray(
     [0, 6, 12, 1, 7, 13, 2, 8, 14, 3, 9, 15, 22, 4, 10, 16, 23, 5, 11, 17, 24, 18, 25, 19, 26, 20, 27, 21, 28],
@@ -39,7 +38,7 @@ class PrimitiveRuntime(Protocol):
 
 def _expand_23_to_29(value: FloatArray) -> FloatArray:
     if value.ndim != 2 or value.shape[1] != 23:
-        raise ValueError("RobotMDAR joint data must have shape [T,23]")
+        raise ValueError("TextOp joint data must have shape [T,23]")
     expanded = np.zeros((value.shape[0], 29), dtype=np.float32)
     expanded[:, :19] = value[:, :19]
     expanded[:, 22:26] = value[:, 19:23]

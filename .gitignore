@@ -3,6 +3,8 @@ build/
 install/
 log/
 result/
+build-textop/
+install-textop/
 
 # Nix
 result*
@@ -52,6 +54,7 @@ Thumbs.db
 
 .venv
 .venv-ros/
+.venv-textop/
 .unitree
 .worktrees/
 .agent-runtime/

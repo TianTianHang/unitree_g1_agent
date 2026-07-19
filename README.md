@@ -10,12 +10,13 @@ TextOp 文本动作 Backend 的重写设计见 [`docs/textop_backend.md`](docs/t
 ## 10 分钟开发环境
 
 支持的开发环境是 Ubuntu 22.04、ROS 2 Humble、系统 Python 3.10、
-uv 0.11.26，以及用于调试面板的 Node.js/npm。项目统一使用根目录下的
-`.venv-ros`；不要使用旧的 Python 3.11 `.venv` 运行 ROS 节点或测试。
+uv 0.11.26，以及用于调试面板的 Node.js/npm。常规 ROS 开发统一使用根目录下的
+`.venv-ros`；TextOp GPU 推理使用独立的 `.venv-textop`。不要使用旧的 Python 3.11
+`.venv` 运行 ROS 节点或测试，也不要在两个正式环境之间手工安装依赖。
 
 先准备 Unitree 官方 ROS 2 消息 overlay。以下方式任选其一：
 
-- 仓库根目录已有 `result/setup.bash`；
+- `result` 指向包含 ROS overlay 的 Nix 构建结果；
 - 已构建官方 `unitree_ros2/cyclonedds_ws`，并通过
   `UNITREE_ROS2_WS=/absolute/path/to/cyclonedds_ws` 指定；
 - 官方 workspace 位于主 checkout 的
@@ -30,6 +31,7 @@ make test
 make test-integration
 make frontend
 make lint
+make check-textop-core
 ```
 
 `make bootstrap` 会验证 `/usr/bin/python3` 为 Python 3.10、uv 为
@@ -45,6 +47,19 @@ UNITREE_ROS2_WS=/opt/unitree_ros2/cyclonedds_ws make build
 
 Nix 仅是可选的 Unitree SDK/ROS overlay 获取方式，不参与 Python 环境
 管理；本地开发和验证不要求 Nix 可用。
+
+## TextOp 治理与验收
+
+TextOp 的轻量测试和自研适配层静态检查通过 `make check-textop-core` 执行，并进入普通 CI。
+需要 Torch、ONNX Runtime GPU 和 CUDA 的完整运行时验收统一使用：
+
+```bash
+make check-textop
+```
+
+该命令只使用 `.venv-textop` 执行推理相关测试，不会改写 `.venv-ros`。模型制品、GPU smoke
+和实机验收要求见 [`docs/textop_runtime_acceptance.md`](docs/textop_runtime_acceptance.md)；
+功能冻结、第三方边界和解冻条件见 [`docs/project_governance.md`](docs/project_governance.md)。
 
 ## 可选 ASR 运行时
 

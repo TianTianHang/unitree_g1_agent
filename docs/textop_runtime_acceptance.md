@@ -12,7 +12,7 @@
 | A-1 | 项目 ROS 推理环境已创建 | 启动 TextOp generator/tracker | 两个 console script 的解释器均为项目管理的 Python 3.10；不依赖系统 Python 或 `../TextOp/.venv` | 自动 + 部署 |
 | A-2 | generator 执行 preflight | 设备参数不是 `cuda:3`、CUDA 不可用或 GPU 数量不足 4 张 | 在加载 checkpoint/VAE 前以非零状态退出，日志明确指出失败项；不切 CPU、其他 GPU 或 official loco | 自动 |
 | A-3 | tracker 执行 preflight | ONNX Runtime 缺失或没有 `CUDAExecutionProvider` | 在创建推理 session 前失败；实机配置不得静默使用 CPU provider | 自动 |
-| A-4 | 模型 manifest 已配置 | 启动并校验制品 | checkpoint、VAE、统计量、归一化文件和 ONNX 文件均存在且 SHA-256 匹配；RobotMDAR inference distribution 有固定版本/来源元数据 | 自动 + 部署 |
+| A-4 | 模型 manifest 已配置 | 启动并校验制品 | checkpoint、VAE、归一化、CLIP 和 ONNX 文件均存在且 SHA-256 匹配；推理源码直接来自本仓库，不安装 RobotMDAR wheel/package | 自动 + 部署 |
 | A-5 | 运行时 import 路径已生效 | 扫描 `sys.path`、module origin 和启动脚本 | 不出现 `/home/ubuntu/Desktop/TextOp` checkout、editable install、`.pth` 注入或 launch 前临时 `PYTHONPATH` | 自动 |
 
 ### B. 启动拓扑与低层控制边界
@@ -67,7 +67,25 @@
 2. C 类单元测试全部通过；C-2 和 E-4 至少完成一次 GPU/实机 smoke（若硬件不可用，必须记录为未执行，不得标记通过）。
 3. `official_loco` 与 `textop` 两种启动图均满足 B 类隔离要求。
 4. 任何失败都不能通过降级到 CPU、其他 GPU、旧 checkout 或官方控制路径来“通过”。
-5. 验收报告记录：代码提交、Python/torch/onnxruntime/RobotMDAR 版本、GPU 型号与编号、模型 manifest 及 SHA-256、测试命令和结果。
+5. 验收报告记录：代码提交、Python/torch/onnxruntime 版本、GPU 型号与编号、本地推理源码版本、模型 manifest 及 SHA-256、测试命令和结果。
+
+当前 GPU runtime 组合固定为 Torch `2.5.1+cu118`、ORT GPU `1.17.1`、NumPy `1.26.4`。
+Tracker 通过独立 uv 环境提供 cuDNN `8.9.6.50`，实际 session 必须报告首选 provider 为
+`CUDAExecutionProvider`；仅 `get_available_providers()` 包含 CUDA 不算通过。
+
+## 最近一次治理验证（2026-07-19）
+
+| 项目 | 结果 |
+| --- | --- |
+| `make test` | 通过；TextOp 轻量测试 68 passed、2 个 Torch 测试在普通环境跳过 |
+| `make check-textop-core` | 通过；Ruff、Pyright 均为零错误 |
+| `make lint` | 通过；上游派生 `textop_model` 精确排除 |
+| `make test-integration` | 通过；2 个系统测试通过 |
+| `make check-textop` | 未完成；首次创建 `.venv-textop` 时 CUDA wheel 下载超过 10 分钟，人工中止 |
+| GPU/Tracker/实机 smoke | 未执行，不计为通过 |
+
+上述“未完成/未执行”不允许用 CPU fallback、旧虚拟环境或外部 checkout 替代。重新执行
+`make check-textop` 会继续使用 uv 缓存和同一个锁文件。
 
 ## 测试矩阵
 
@@ -75,8 +93,7 @@
 | --- | --- | --- |
 | 单元 | preflight、manifest、ABI、readiness、stop gate、reference buffer | `src/textop_backend/tests` |
 | 集成 | generator→tracker→guard、lease 生命周期、safe stop | ROS launch + fake messages |
-| GPU smoke | RobotMDAR primitive 在 GPU3 上运行 | 项目 Python 3.10 环境 |
+| GPU smoke | 项目内 TextOp primitive 推理在 GPU3 上运行 | 项目 Python 3.10 环境 |
 | Tracker smoke | ONNX `[1,431] -> [1,29]` 与 CUDA provider | ONNX Runtime GPU |
 | 拓扑 | backend 静态选择与 publisher/consumer 集合 | `ros2 launch`、graph inspection |
 | 实机 | `/odom` 来源、真实 lowstate、低层停止行为 | G1 hardware（需单独批准） |
-

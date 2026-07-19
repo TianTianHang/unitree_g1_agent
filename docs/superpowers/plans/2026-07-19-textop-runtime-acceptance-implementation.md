@@ -1,5 +1,8 @@
 # TextOp Runtime Acceptance Implementation Plan
 
+> 历史计划：其中复用 `.venv-ros` 的环境方案已被
+> [`docs/project_governance.md`](../../project_governance.md) 中的 `.venv-textop` 隔离方案取代。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task with review checkpoints.
 
 **Goal:** 将 TextOp runtime 从“代码可构造”推进到可复现部署、可诊断启动、GPU/ONNX smoke 可验收的 fail-closed 运行阶段。
@@ -23,20 +26,22 @@
 
 **Files:**
 - Modify: `src/textop_backend/textop_backend/runtime_preflight.py`
+- Modify: `src/textop_backend/textop_backend/robotmdar_runtime.py`
+- Create: `src/textop_backend/textop_backend/textop_model/`
 - Modify: `src/textop_backend/config/textop_generator.yaml`
 - Test: `src/textop_backend/tests/test_runtime_preflight.py`
-- Create: `src/textop_backend/config/textop_runtime_lock.yaml`
+- Test: `src/textop_backend/tests/test_direct_textop_inference.py`
 
 **Interfaces:**
-- `RuntimeFacts` 增加 `robotmdar_digest: str | None`。
-- `validate_generator_runtime(..., expected_robotmdar_version: str, expected_robotmdar_digest: str)` 校验版本和 digest。
-- lock 文件包含 `robotmdar.version`、`robotmdar.source`、`robotmdar.sha256`，启动前读取并传入 preflight。
+- 推理模型、diffusion 和特征重建代码直接纳入 `textop_backend`，不安装 RobotMDAR wheel/package。
+- `validate_generator_runtime(...)` 只校验项目 Python、Torch、CUDA 和固定 `cuda:3`。
+- checkpoint、VAE、mean/std 继续通过 manifest 做 SHA-256 制品校验。
 
-- [ ] 写测试：缺失 digest、版本不匹配、digest 不匹配均抛出 `PreflightError`；合法 lock 通过。
-- [ ] 运行 `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/textop_backend python3 -m pytest -q src/textop_backend/tests/test_runtime_preflight.py`，确认新增测试先失败。
-- [ ] 实现分发 metadata/digest 探测；禁止从 `TextOp` checkout 推导 digest 作为通过条件。
-- [ ] 重新运行同一测试，确认通过。
-- [ ] 提交 `feat: validate textop runtime artifact lock`。
+- [ ] 写测试：本地源码不 import `robotmdar`，runtime 不使用 Hydra instantiate，并固定 v3 站立 seed 与 DOF velocity 布局。
+- [ ] 运行定向测试，确认新增行为测试先失败。
+- [ ] 直接实现模型构造、权重加载、normalization、diffusion 和 motion feature 重建。
+- [ ] 重新运行同一测试，并在 `cuda:3` 加载真实制品完成 primitive smoke。
+- [ ] 提交 `feat: embed textop inference runtime`。
 
 ### Task 2: 项目 Python 环境与构建入口
 
@@ -47,11 +52,11 @@
 - Test: `tests/test_textop_env_check.py`
 
 **Interfaces:**
-- 新增 `dependency-groups.textop`，只声明项目锁定的 runtime 包或内部 wheel，不声明外部 checkout 路径。
+- 新增 `dependency-groups.textop`，只声明本仓库推理源码所需第三方库，不声明外部 checkout 路径。
 - `make bootstrap-textop` 创建/同步 `.venv-ros`；`make build-textop` 在该解释器下执行 ROS 构建。
 - `scripts/textop_env_check.py` 输出 JSON 风格检查结果并以非零状态表示失败。
 
-- [ ] 写测试：脚本拒绝 Python 3.11、错误解释器、外部 `robotmdar` origin；接受 Python 3.10 + lock 元数据。
+- [ ] 写测试：脚本拒绝 Python 3.11 和错误解释器；接受 Python 3.10、Torch、CUDA3，不要求 RobotMDAR distribution。
 - [ ] 运行测试确认先失败。
 - [ ] 实现 Makefile target 和环境检查脚本；不修改全局 shell 配置。
 - [ ] 运行脚本单元测试与 `make -n bootstrap-textop build-textop`，确认命令使用 `.venv-ros/bin/python`。
@@ -97,7 +102,6 @@
 - Modify: `docs/textop_runtime_acceptance.md`（勾选实际结果）
 
 - [ ] 运行 TextOp 全量单元测试、包构建、graph smoke、环境检查。
-- [ ] 记录代码提交、解释器、Torch/ORT/RobotMDAR 版本、GPU3 信息、制品 SHA-256 和未执行的实机项。
+- [ ] 记录代码提交、解释器、Torch/ORT 版本、GPU3 信息、本地推理源码、制品 SHA-256 和未执行的实机项。
 - [ ] 运行 `git diff --check`，确认工作树只包含本阶段变更。
 - [ ] 提交 `docs: record textop runtime acceptance results`。
-

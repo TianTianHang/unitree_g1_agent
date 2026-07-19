@@ -19,12 +19,12 @@ generator:
   vae:
     path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/logs/pretrained/checkpoint/vae.pth
     sha256: 6522ab17b8904d1ea6a1dcdef241090000706b485312a319007dc4bb3eac8955
-  statistics:
-    path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/dataset/BABEL-AMASS-ROBOT-23dof-FULL-50fps/action_statistics.json
-    sha256: 036a432ff3d8d3d790eaaa4f2e65ed0fa05cdb3f7b5fafaf749bb98383438bfc
   normalization:
     path: /home/ubuntu/Desktop/TextOp/TextOpRobotMDAR/dataset/BABEL-AMASS-ROBOT-23dof-FULL-50fps/meanstd.pkl
     sha256: ac5af14f9743773a6e64dc1a2a87251e569e56ea929fa00d6ad750dcb08bd41e
+  clip:
+    path: /home/ubuntu/Desktop/unitree_g1_agent/.unitree/models/textop/ViT-B-32.pt
+    sha256: 40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af
 
 joint_names:
   isaaclab:

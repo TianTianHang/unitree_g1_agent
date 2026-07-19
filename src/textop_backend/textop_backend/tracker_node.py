@@ -1,3 +1,7 @@
+# rclpy's Humble stubs do not narrow declared parameter values or callback-owned
+# optional message state after the readiness checks used by this node.
+# pyright: reportArgumentType=false, reportOptionalMemberAccess=false, reportIndexIssue=false
+
 from __future__ import annotations
 
 import time
@@ -7,6 +11,7 @@ import rclpy
 from builtin_interfaces.msg import Duration
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from unitree_hg.msg import LowState
 
 from g1_agent_msgs.msg import (
@@ -31,6 +36,7 @@ class TextOpTrackerNode(Node):
         super().__init__("textop_tracker_node")
         for name, default in (
             ("manifest_path", ""), ("onnx_providers", ["CPUExecutionProvider"]),
+            ("cuda_device_id", 3),
             ("reference_topic", "/g1/textop/reference"), ("lease_topic", "/g1/low_level/lease"),
             ("candidate_topic", "/g1/low_level/candidate"), ("lowstate_topic", "/lowstate"),
             ("odometry_topic", "/odom"), ("lowstate_timeout", 0.1), ("odometry_timeout", 0.1),
@@ -38,6 +44,7 @@ class TextOpTrackerNode(Node):
             ("candidate_valid_for", 0.04), ("tracker_status_topic", "/g1/textop/tracker_status"),
         ):
             self.declare_parameter(name, default)
+        self.declare_parameter("cuda_library_dirs", Parameter.Type.STRING_ARRAY)
         manifest_path = self.get_parameter("manifest_path").value
         if not manifest_path:
             raise RuntimeError("manifest_path is required")
@@ -50,6 +57,8 @@ class TextOpTrackerNode(Node):
         policy = load_onnx_policy(
             str(self.manifest.policy.path), input_name=self.manifest.policy.input_name,
             output_name=self.manifest.policy.output_name, providers=list(self.get_parameter("onnx_providers").value),
+            cuda_library_dirs=list(self.get_parameter("cuda_library_dirs").value),
+            cuda_device_id=int(self.get_parameter("cuda_device_id").value),
         )
         self.engine = TrackerEngine(self.manifest, policy)
         self.lease: LowLevelControlLease | None = None
@@ -65,7 +74,12 @@ class TextOpTrackerNode(Node):
         self.status_publisher = self.create_publisher(
             TextOpTrackerStatus, self.get_parameter("tracker_status_topic").value, 10
         )
-        self.create_subscription(MotionReferenceSegment, self.get_parameter("reference_topic").value, self._reference, 10)
+        self.create_subscription(
+            MotionReferenceSegment,
+            self.get_parameter("reference_topic").value,
+            self._reference,
+            10,
+        )
         self.create_subscription(LowLevelControlLease, self.get_parameter("lease_topic").value, self._lease, 10)
         self.create_subscription(LowState, self.get_parameter("lowstate_topic").value, self._lowstate, 10)
         self.create_subscription(Odometry, self.get_parameter("odometry_topic").value, self._odometry, 10)

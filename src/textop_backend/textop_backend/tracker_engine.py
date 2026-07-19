@@ -10,7 +10,6 @@ from .manifest import ModelManifest
 from .reference import MotionReferenceSegment, ReferenceBuffer
 from .tracker import MotorCommand, RobotState, build_observation, decode_action
 
-
 FloatArray = NDArray[np.float32]
 
 
