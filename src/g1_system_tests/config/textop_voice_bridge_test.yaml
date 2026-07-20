@@ -1,0 +1,10 @@
+motion:
+  backend: textop
+  textop_server_timeout_sec: 2.0
+
+motion_defaults:
+  default_textop_duration_sec: 1.0
+  max_textop_duration_sec: 2.0
+
+agent:
+  backend: rule_based

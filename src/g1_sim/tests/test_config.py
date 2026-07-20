@@ -8,6 +8,7 @@ def test_default_config_uses_unitree_native_topics():
     config = G1SimConfig.default()
 
     assert config.topics["low_state"] == "lowstate"
+    assert config.topics["odometry"] == "/odom"
     assert config.topics["low_cmd_root"] == "/lowcmd"
     assert config.topics["user_lowcmd"] == "/user_lowcmd"
     assert config.topics["dex3_left_state"] == "/lf/dex3/left/state"
@@ -20,6 +21,7 @@ def test_default_config_uses_unitree_native_topics():
     assert config.sim["sport_api_ids"]["set_velocity"] == 7105
     assert config.sim["voice_api_ids"]["tts"] == 1001
     assert config.sim["agv_api_ids"]["move"] == 1001
+    assert config.sim["odometry_hz"] == 50.0
 
 
 def test_default_topics_are_ros2_names_not_sdk2_dds_channels():

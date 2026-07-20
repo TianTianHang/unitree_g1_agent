@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -84,7 +85,7 @@ class ReferenceBuffer:
     def _validate(self, segment: MotionReferenceSegment) -> None:
         if not segment.request_id:
             raise ReferenceError("request_id must not be empty")
-        if segment.dt != self.expected_dt:
+        if not math.isclose(segment.dt, self.expected_dt, rel_tol=0.0, abs_tol=1e-6):
             raise ReferenceError("dt does not match TextOp control period")
         arrays = (
             (segment.joint_position, 29, "joint_position"),

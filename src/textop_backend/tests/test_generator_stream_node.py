@@ -181,7 +181,7 @@ def test_stop_during_active_stream_cancels_goal_and_deactivates_lease():
 
     thread.join(timeout=1.0)
     _shutdown(node)
-    assert goal.terminal == "canceled"
+    assert goal.terminal == "aborted"
     assert result["value"].reason == "safe_stop"
     assert node._lease_active is False
 
@@ -202,7 +202,7 @@ def test_stop_during_initial_text_encoding_does_not_publish_orphan_stream():
     thread.join(timeout=1.0)
     _wait_until(lambda: node.engine.machine.request_id is None)
     _shutdown(node)
-    assert goal.terminal == "canceled"
+    assert goal.terminal == "aborted"
     assert result["value"].reason == "safe_stop"
     assert node.reference_publisher.messages == []
 

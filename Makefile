@@ -78,7 +78,8 @@ build: bootstrap
 	@$(ROS_SETUP); colcon build --symlink-install --event-handlers console_direct+
 
 build-textop: build bootstrap-textop
-	@$(ROS_SETUP); $(TEXTOP_ENV)/bin/python -m colcon build --packages-select textop_backend \
+	@$(ROS_SETUP); $(TEXTOP_ENV)/bin/python -m colcon build \
+		--packages-select g1_agent_msgs textop_backend \
 		--build-base $(TEXTOP_BUILD_BASE) --install-base $(TEXTOP_INSTALL_BASE) \
 		--symlink-install --event-handlers console_direct+
 

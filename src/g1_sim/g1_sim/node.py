@@ -20,12 +20,14 @@ from g1_sim.model import (
 
 
 def _load_ros_messages():
+    from nav_msgs.msg import Odometry
     from std_msgs.msg import String
     from unitree_api.msg import Request, Response
     from unitree_hg.msg import HandCmd, HandState, IMUState, LowCmd, LowState
 
     return {
         "String": String,
+        "Odometry": Odometry,
         "Request": Request,
         "Response": Response,
         "HandCmd": HandCmd,
@@ -58,6 +60,7 @@ class G1SimNode:
         self.imu_pubs = [
             node.create_publisher(self.msg["IMUState"], topics["secondary_imu"], 10),
         ]
+        self.odometry_pub = node.create_publisher(self.msg["Odometry"], topics["odometry"], 10)
         self.dex3_left_state_pubs = [
             node.create_publisher(self.msg["HandState"], topics["dex3_left_state"], 10),
             node.create_publisher(self.msg["HandState"], topics["dex3_left_state_legacy"], 10),
@@ -98,6 +101,7 @@ class G1SimNode:
         node.create_timer(_period_from_hz(config.sim["low_state_hz"]), self.publish_lowstate)
         node.create_timer(_period_from_hz(config.sim["low_state_low_freq_hz"]), self.publish_lowstate_low_freq)
         node.create_timer(_period_from_hz(config.sim["imu_hz"]), self.publish_imu)
+        node.create_timer(_period_from_hz(config.sim["odometry_hz"]), self.publish_odometry)
         node.create_timer(_period_from_hz(config.sim["hand_state_hz"]), self.publish_hand_state)
 
     def _now_sec(self) -> float:
@@ -261,6 +265,24 @@ class G1SimNode:
         for publisher in self.imu_pubs:
             publisher.publish(msg)
 
+    def publish_odometry(self) -> None:
+        now = self.node.get_clock().now()
+        now_sec = now.nanoseconds / 1_000_000_000.0
+        self.state.integrate(now_sec)
+        msg = self.msg["Odometry"]()
+        msg.header.stamp = now.to_msg()
+        msg.header.frame_id = "odom"
+        msg.child_frame_id = "pelvis"
+        msg.pose.pose.position.x = self.state.x
+        msg.pose.pose.position.y = self.state.y
+        msg.pose.pose.position.z = float(self.config.sim["pelvis_height"])
+        msg.pose.pose.orientation.z = math.sin(self.state.yaw / 2.0)
+        msg.pose.pose.orientation.w = math.cos(self.state.yaw / 2.0)
+        msg.twist.twist.linear.x = self.state.vx
+        msg.twist.twist.linear.y = self.state.vy
+        msg.twist.twist.angular.z = self.state.vyaw
+        self.odometry_pub.publish(msg)
+
     def publish_hand_state(self) -> None:
         left = self._make_hand_state("left")
         right = self._make_hand_state("right")
@@ -391,6 +413,10 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except RuntimeError as exc:
+        if "Unable to convert call argument to Python object" not in str(exc):
+            raise
+        node.get_logger().warning("ROS message conversion interrupted during shutdown")
     finally:
         try:
             node.destroy_node()

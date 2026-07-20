@@ -87,6 +87,17 @@ Tracker 通过独立 uv 环境提供 cuDNN `8.9.6.50`，实际 session 必须报
 上述“未完成/未执行”不允许用 CPU fallback、旧虚拟环境或外部 checkout 替代。重新执行
 `make check-textop` 会继续使用 uv 缓存和同一个锁文件。
 
+## ROS 全链路验证（2026-07-20）
+
+- `official_loco` 与 `textop` 均改由 `g1_system.launch.py` 统一启动共同节点和 backend 节点；
+- `make test-integration` 通过，包含 Loco Sport API 闭环和 TextOp
+  `voice → action → reference → lease → candidate → /lowcmd → stop` 闭环；
+- TextOp 集成测试使用确定性 Generator/Policy 推理内核，但运行真实 ROS 节点适配层、
+  Tracker、`low_level_guard`、消息序列化和停止撤租逻辑；
+- `make check-textop` 通过，90 个 TextOp 测试通过，独立 `.venv-textop` console script 校验通过；
+- GPU checkpoint 推理、CUDA ONNX session 和实机 `/lowcmd` smoke 仍需单独执行，不由上述
+  确定性集成测试替代。
+
 ## 测试矩阵
 
 | 层级 | 目标 | 载体 |

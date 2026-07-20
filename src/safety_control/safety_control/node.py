@@ -265,6 +265,10 @@ def main(args=None):
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except RuntimeError as exc:
+        if "Unable to convert call argument to Python object" not in str(exc):
+            raise
+        node.get_logger().warning("ROS message conversion interrupted during shutdown")
     finally:
         try:
             node.destroy_node()

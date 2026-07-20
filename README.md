@@ -2,6 +2,20 @@
 
 TextOp 文本动作 Backend 的重写设计见 [`docs/textop_backend.md`](docs/textop_backend.md)。
 
+## 统一启动
+
+两种全身运动控制后端都通过同一个入口启动。该入口会自动启动
+`g1_interface`、`safety_control`、`voice_bridge` 以及所选 backend 的执行节点：
+
+```bash
+ros2 launch g1_bringup g1_system.launch.py motion_backend:=official_loco
+ros2 launch g1_bringup g1_system.launch.py motion_backend:=textop
+```
+
+仿真闭环可额外传入 `start_sim:=true`。TextOp 模式会自动启动 Generator、Tracker 和
+`low_level_guard`；无需再逐个启动节点。自建 ASR 需要时使用
+`start_custom_asr:=true asr_source_mode:=custom`。
+
 面向 Unitree G1 的 ROS 2 Humble 控制栈。ASR 事件先由 `voice_bridge`
 转换为强类型运动意图，再经过 `safety_control` 校验；只有
 `ValidatedLocoCommand` 或 `ValidatedActionCommand` 能进入 `g1_interface`

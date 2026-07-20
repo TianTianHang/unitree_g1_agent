@@ -215,6 +215,11 @@ ros2 launch g1_bringup g1_system.launch.py motion_backend:=official_loco
 ros2 launch g1_bringup g1_system.launch.py motion_backend:=textop
 ```
 
+统一入口同时启动 `g1_interface`、`safety_control` 和 `voice_bridge`，并将同一个
+`motion_backend` 传递给运动接口与命令入口。`textop` 额外启动 Generator、Tracker 和
+`low_level_guard`；`official_loco` 不启动任何 `/lowcmd` 发布链路。仿真测试可增加
+`start_sim:=true`，此时 `g1_sim` 同时提供 lowstate、Sport API 和 pelvis `/odom`。
+
 推荐将 backend 配置同时写入启动日志和诊断状态：
 
 ```text

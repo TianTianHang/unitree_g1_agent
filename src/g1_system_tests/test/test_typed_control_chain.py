@@ -3,12 +3,13 @@ import time
 import unittest
 
 import launch
-import launch_ros.actions
 import launch_testing.actions
 import launch_testing.asserts
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from unitree_api.msg import Request
 
 from g1_agent_msgs.msg import (
@@ -23,27 +24,17 @@ from g1_agent_msgs.msg import (
 
 def generate_test_description():
     config = get_package_share_directory("g1_system_tests") + "/config/voice_bridge_test.yaml"
-    g1_sim = launch_ros.actions.Node(package="g1_sim", executable="g1_sim_node", output="screen")
-    g1_interface = launch_ros.actions.Node(
-        package="g1_interface",
-        executable="g1_interface_node",
-        output="screen",
+    system_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            get_package_share_directory("g1_bringup") + "/launch/g1_system.launch.py"
+        ),
+        launch_arguments={
+            "motion_backend": "official_loco",
+            "start_sim": "true",
+            "voice_config_path": config,
+        }.items(),
     )
-    safety_control = launch_ros.actions.Node(
-        package="safety_control",
-        executable="safety_control_node",
-        output="screen",
-    )
-    voice_bridge = launch_ros.actions.Node(
-        package="voice_bridge",
-        executable="voice_bridge_node",
-        output="screen",
-        parameters=[{"config_path": config}],
-    )
-    nodes = [g1_sim, g1_interface, safety_control, voice_bridge]
-    return launch.LaunchDescription(nodes + [launch_testing.actions.ReadyToTest()]), {
-        "g1_interface": g1_interface,
-    }
+    return launch.LaunchDescription([system_launch, launch_testing.actions.ReadyToTest()])
 
 
 def _velocity(request):
@@ -143,9 +134,8 @@ class TestTypedControlChain(unittest.TestCase):
 
 @launch_testing.post_shutdown_test()
 class TestProcessesExitCleanly(unittest.TestCase):
-    def test_g1_interface_exit_code(self, proc_info, g1_interface):
-        launch_testing.asserts.assertExitCodes(proc_info, process=g1_interface)
-
+    def test_exit_codes(self, proc_info):
+        launch_testing.asserts.assertExitCodes(proc_info)
 
 if __name__ == "__main__":
     unittest.main()

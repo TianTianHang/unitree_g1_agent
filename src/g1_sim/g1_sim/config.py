@@ -15,6 +15,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "low_state": "lowstate",
         "low_state_low_freq": "lf/lowstate",
         "secondary_imu": "secondary_imu",
+        "odometry": "/odom",
         "low_cmd_root": "/lowcmd",
         "low_cmd_relative": "lowcmd",
         "arm_sdk": "/arm_sdk",
@@ -44,7 +45,9 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "low_state_hz": 50.0,
         "low_state_low_freq_hz": 5.0,
         "imu_hz": 50.0,
+        "odometry_hz": 50.0,
         "hand_state_hz": 20.0,
+        "pelvis_height": 0.77,
         "sport_api_ids": {
             "get_fsm_id": 7001,
             "get_fsm_mode": 7002,
@@ -141,6 +144,7 @@ class G1SimConfig:
             "low_state",
             "low_state_low_freq",
             "secondary_imu",
+            "odometry",
             "low_cmd_root",
             "low_cmd_relative",
             "arm_sdk",
@@ -181,7 +185,14 @@ class G1SimConfig:
                 + ", ".join(dds_topics)
             )
 
-        for key in ["low_state_hz", "low_state_low_freq_hz", "imu_hz", "hand_state_hz"]:
+        for key in [
+            "low_state_hz",
+            "low_state_low_freq_hz",
+            "imu_hz",
+            "odometry_hz",
+            "hand_state_hz",
+            "pelvis_height",
+        ]:
             _require_positive_number(self.sim, key)
 
         motor_count = self.sim.get("motor_count")

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import rclpy
+from rclpy.executors import MultiThreadedExecutor
+
+from textop_backend.generator_engine import PrimitiveResult
+from textop_backend.manifest import (
+    AssetManifest,
+    GeneratorManifest,
+    ModelManifest,
+    PolicyManifest,
+)
+
+
+def _manifest() -> ModelManifest:
+    asset = AssetManifest(path=Path("/tmp/textop-test-asset"), sha256="0" * 64)
+    names = tuple(f"joint_{index}" for index in range(29))
+    return ModelManifest(
+        model_id="textop-system-test",
+        robot_profile="g1_29dof_unitree_v1",
+        control_profile="textop_tracker_v1",
+        control_frequency=50.0,
+        policy=PolicyManifest(
+            path=asset.path,
+            sha256=asset.sha256,
+            input_name="obs",
+            output_name="actions",
+            input_shape=(1, 431),
+            output_shape=(1, 29),
+        ),
+        generator=GeneratorManifest(
+            checkpoint=asset,
+            vae=asset,
+            normalization=asset,
+            clip=asset,
+        ),
+        isaaclab_joint_names=names,
+        unitree_joint_names=names,
+        default_q=(0.0,) * 29,
+        action_scale=(0.1,) * 29,
+        kp=(20.0,) * 29,
+        kd=(1.0,) * 29,
+        future_steps=5,
+        anchor_body="pelvis",
+        quaternion_order="wxyz",
+    )
+
+
+class DeterministicRuntime:
+    history_len = 2
+    future_len = 8
+    dt = 0.02
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        self.index = 0
+
+    def initial_state(self):
+        return np.zeros((2, 57), dtype=np.float32), np.zeros(3, dtype=np.float32)
+
+    def encode_text(self, prompt: str):
+        return prompt
+
+    def generate(self, embedding, history, absolute_pose) -> PrimitiveResult:
+        del embedding, history, absolute_pose
+        self.index += 1
+        frames = 10
+        anchor = np.zeros((frames, 3), dtype=np.float32)
+        anchor[:, 2] = 0.77
+        orientation = np.tile(np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32), (frames, 1))
+        joints = np.zeros((frames, 23), dtype=np.float32)
+        return PrimitiveResult(
+            future_motion=np.full((2, 57), self.index, dtype=np.float32),
+            absolute_pose=np.array([float(self.index), 0.0, 0.77], dtype=np.float32),
+            dof_position=joints,
+            dof_velocity=np.zeros_like(joints),
+            anchor_position=anchor,
+            anchor_orientation_xyzw=orientation,
+        )
+
+
+def main() -> None:
+    from textop_backend import generator_node
+
+    manifest = _manifest()
+    generator_node.preflight_generator_runtime = lambda **_kwargs: SimpleNamespace(
+        python_version="3.10",
+        torch_version="system-test",
+        device_index=3,
+    )
+    generator_node.load_manifest = lambda _path: manifest
+    generator_node.RobotMDARRuntime = DeterministicRuntime
+
+    rclpy.init()
+    node = generator_node.TextOpGeneratorNode()
+    executor = MultiThreadedExecutor(num_threads=3)
+    executor.add_node(node)
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        executor.shutdown()
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

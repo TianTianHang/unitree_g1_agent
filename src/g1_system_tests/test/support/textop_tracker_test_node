@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+
+import numpy as np
+import rclpy
+
+from textop_backend.manifest import (
+    AssetManifest,
+    GeneratorManifest,
+    ModelManifest,
+    PolicyManifest,
+)
+
+
+def _manifest() -> ModelManifest:
+    asset = AssetManifest(path=Path("/tmp/textop-test-asset"), sha256="0" * 64)
+    names = tuple(f"joint_{index}" for index in range(29))
+    return ModelManifest(
+        model_id="textop-system-test",
+        robot_profile="g1_29dof_unitree_v1",
+        control_profile="textop_tracker_v1",
+        control_frequency=50.0,
+        policy=PolicyManifest(
+            path=asset.path,
+            sha256=asset.sha256,
+            input_name="obs",
+            output_name="actions",
+            input_shape=(1, 431),
+            output_shape=(1, 29),
+        ),
+        generator=GeneratorManifest(
+            checkpoint=asset,
+            vae=asset,
+            normalization=asset,
+            clip=asset,
+        ),
+        isaaclab_joint_names=names,
+        unitree_joint_names=names,
+        default_q=(0.0,) * 29,
+        action_scale=(0.1,) * 29,
+        kp=(20.0,) * 29,
+        kd=(1.0,) * 29,
+        future_steps=5,
+        anchor_body="pelvis",
+        quaternion_order="wxyz",
+    )
+
+
+class ZeroPolicy:
+    def predict(self, observation):
+        assert np.asarray(observation).shape == (431,)
+        return np.zeros(29, dtype=np.float32)
+
+
+def main() -> None:
+    from textop_backend import tracker_node
+
+    manifest = _manifest()
+    tracker_node.preflight_tracker_runtime = lambda: SimpleNamespace(
+        python_version="3.10",
+        onnxruntime_version="system-test",
+        onnx_providers=("CPUExecutionProvider",),
+    )
+    tracker_node.load_manifest = lambda _path: manifest
+    tracker_node.load_onnx_policy = lambda *_args, **_kwargs: ZeroPolicy()
+
+    rclpy.init()
+    node = tracker_node.TextOpTrackerNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

@@ -46,6 +46,9 @@ class _EmptyMessage:
 
 
 def _install_fake_ros_modules():
+    nav_msgs = types.ModuleType("nav_msgs")
+    nav_msgs_msg = types.ModuleType("nav_msgs.msg")
+    nav_msgs_msg.Odometry = type("Odometry", (_EmptyMessage,), {})
     std_msgs = types.ModuleType("std_msgs")
     std_msgs_msg = types.ModuleType("std_msgs.msg")
     std_msgs_msg.String = String
@@ -60,6 +63,8 @@ def _install_fake_ros_modules():
 
     sys.modules.setdefault("std_msgs", std_msgs)
     sys.modules.setdefault("std_msgs.msg", std_msgs_msg)
+    sys.modules.setdefault("nav_msgs", nav_msgs)
+    sys.modules.setdefault("nav_msgs.msg", nav_msgs_msg)
     sys.modules.setdefault("unitree_api", unitree_api)
     sys.modules.setdefault("unitree_api.msg", unitree_api_msg)
     sys.modules.setdefault("unitree_hg", unitree_hg)

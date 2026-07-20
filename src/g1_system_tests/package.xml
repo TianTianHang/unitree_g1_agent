@@ -11,6 +11,7 @@
   <test_depend>ament_index_python</test_depend>
   <test_depend>diagnostic_msgs</test_depend>
   <test_depend>g1_agent_msgs</test_depend>
+  <test_depend>g1_bringup</test_depend>
   <test_depend>g1_interface</test_depend>
   <test_depend>g1_sim</test_depend>
   <test_depend>launch</test_depend>
@@ -18,9 +19,14 @@
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>launch_testing_ros</test_depend>
+  <test_depend>low_level_guard</test_depend>
+  <test_depend>nav_msgs</test_depend>
+  <test_depend>numpy</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>safety_control</test_depend>
   <test_depend>unitree_api</test_depend>
+  <test_depend>unitree_hg</test_depend>
+  <test_depend>textop_backend</test_depend>
   <test_depend>voice_bridge</test_depend>
 
   <export>

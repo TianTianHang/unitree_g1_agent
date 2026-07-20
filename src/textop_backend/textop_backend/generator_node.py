@@ -220,7 +220,10 @@ class TextOpGeneratorNode(Node):
                 goal_handle.succeed()
                 return ExecuteMotion.Result(success=True, reason=outcome.reason)
             if outcome.state is CommandState.CANCELED:
-                goal_handle.canceled()
+                if goal_handle.is_cancel_requested:
+                    goal_handle.canceled()
+                else:
+                    goal_handle.abort()
             else:
                 goal_handle.abort()
             return ExecuteMotion.Result(success=False, reason=outcome.reason)

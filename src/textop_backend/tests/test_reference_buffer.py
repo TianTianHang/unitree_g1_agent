@@ -46,3 +46,10 @@ def test_rejects_non_finite_values():
     segment.joint_position[0, 0] = np.nan
     with pytest.raises(ReferenceError, match="finite"):
         ReferenceBuffer(future_steps=5).append(segment)
+
+
+def test_accepts_float32_control_period_after_ros_serialization():
+    segment = _segment(reset=True)
+    segment.dt = float(np.float32(0.02))
+
+    ReferenceBuffer(future_steps=5).append(segment)
