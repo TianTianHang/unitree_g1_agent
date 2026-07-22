@@ -40,6 +40,7 @@ DEFAULT_CONFIG: dict[str, dict[str, Any]] = {
         "asr": "/g1/audio/asr",
         "audio_event": "/g1/audio/event",
         "safety_state": "/g1/state/safety",
+        "tts_cmd": "/g1/cmd/audio/tts",
     },
     "control": {
         "default_mode": "sport_api_loco",
@@ -164,6 +165,7 @@ class G1InterfaceConfig:
             ("project_topics", "asr"),
             ("project_topics", "audio_event"),
             ("project_topics", "safety_state"),
+            ("project_topics", "tts_cmd"),
         ]
         missing_topics = []
         for section, key in required_topics:

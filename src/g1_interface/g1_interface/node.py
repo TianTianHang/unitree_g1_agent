@@ -245,6 +245,9 @@ class G1InterfaceNode:
             self.sport_request_pub = node.create_publisher(
                 self.msg["Request"], config.native_topics["sport_request"], 10
             )
+        self.voice_request_pub = node.create_publisher(
+            self.msg["Request"], config.native_topics["voice_request"], 10
+        )
 
         node.create_subscription(
             self.msg["LowState"],
@@ -278,6 +281,12 @@ class G1InterfaceNode:
             self.msg["SafetyStatus"],
             config.project_topics["safety_state"],
             self.on_safety_state,
+            10,
+        )
+        node.create_subscription(
+            self.msg["String"],
+            config.project_topics["tts_cmd"],
+            self.on_tts_cmd,
             10,
         )
         if self._sport_enabled:
@@ -396,6 +405,22 @@ class G1InterfaceNode:
                 self.asr_pub.publish(event)
             return
         self.audio_event_pub.publish(event)
+
+    def on_tts_cmd(self, msg) -> None:
+        try:
+            payload = json.loads(getattr(msg, "data", "{}"))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            self.node.get_logger().warning("invalid TTS command: not valid JSON")
+            return
+        text = payload.get("text", "")
+        if not isinstance(text, str) or not text.strip():
+            self.node.get_logger().warning("invalid TTS command: empty text")
+            return
+        speaker_id = int(payload.get("speaker_id", 0))
+        request = self.msg["Request"]()
+        request.header.identity.api_id = 1001
+        request.parameter = json.dumps({"index": 0, "speaker_id": speaker_id, "text": text.strip()}, sort_keys=True)
+        self.voice_request_pub.publish(request)
 
     def on_safe_loco(self, msg):
         now_sec = self._monotonic_sec()

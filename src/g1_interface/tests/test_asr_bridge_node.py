@@ -99,6 +99,59 @@ def test_g1_interface_wires_audio_msg_to_project_asr_and_event_topics():
     assert node.publisher_types["/g1/state/mode"] is RobotStateSummary
 
 
+def test_g1_interface_wires_tts_cmd_to_voice_request():
+    node = FakeNode()
+    bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())
+
+    tts_subscriptions = [topic for topic, callback in node.subscriptions if callback == bridge.on_tts_cmd]
+    assert tts_subscriptions == ["/g1/cmd/audio/tts"]
+    assert "/api/voice/request" in node.publishers
+    from unitree_api.msg import Request
+    assert node.publisher_types["/api/voice/request"] is Request
+
+
+def test_tts_cmd_forwards_text_as_voice_request():
+    node = FakeNode()
+    bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())
+
+    bridge.on_tts_cmd(_string_msg('{"text": "你好，小宇", "speaker_id": 1}'))
+
+    assert len(node.publishers["/api/voice/request"].messages) == 1
+    request = node.publishers["/api/voice/request"].messages[0]
+    assert request.header.identity.api_id == 1001
+    params = json.loads(request.parameter)
+    assert params == {"index": 0, "speaker_id": 1, "text": "你好，小宇"}
+
+
+def test_tts_cmd_defaults_speaker_id():
+    node = FakeNode()
+    bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())
+
+    bridge.on_tts_cmd(_string_msg('{"text": "你好"}'))
+
+    request = node.publishers["/api/voice/request"].messages[0]
+    params = json.loads(request.parameter)
+    assert params["speaker_id"] == 0
+
+
+def test_tts_cmd_rejects_empty_text():
+    node = FakeNode()
+    bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())
+
+    bridge.on_tts_cmd(_string_msg('{"text": "  "}'))
+    assert node.publishers["/api/voice/request"].messages == []
+    assert node.logger.warnings[-1] == "invalid TTS command: empty text"
+
+
+def test_tts_cmd_rejects_invalid_json():
+    node = FakeNode()
+    bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())
+
+    bridge.on_tts_cmd(_string_msg("not json"))
+    assert node.publishers["/api/voice/request"].messages == []
+    assert node.logger.warnings[-1] == "invalid TTS command: not valid JSON"
+
+
 def test_audio_msg_callback_forwards_asr_as_typed_event():
     node = FakeNode()
     bridge = G1InterfaceNode(node=node, config=G1InterfaceConfig.default())

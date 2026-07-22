@@ -44,8 +44,6 @@ def strip_wake_word(text: str, config: VoiceBridgeConfig) -> tuple[bool, str]:
 def asr_event_is_usable(event: AsrEvent, config: VoiceBridgeConfig) -> tuple[bool, str | None]:
     if not event.text:
         return False, "empty text"
-    if not config.voice["process_partial"] and not event.is_final:
-        return False, "partial result"
     if event.confidence is not None and event.confidence < config.voice["min_confidence"]:
         return False, "low confidence"
     return True, None

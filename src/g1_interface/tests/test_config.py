@@ -14,6 +14,7 @@ def test_default_config_uses_unitree_ros2_topic_names():
     assert config.native_topics["audio_msg"] == "/audio_msg"
     assert config.project_topics["asr"] == "/g1/audio/asr"
     assert config.project_topics["audio_event"] == "/g1/audio/event"
+    assert config.project_topics["tts_cmd"] == "/g1/cmd/audio/tts"
     assert config.control["allow_low_level"] is False
     assert config.control["default_mode"] == "sport_api_loco"
     assert config.timeouts["mode_query_period_ms"] == 500
@@ -86,13 +87,14 @@ native_topics:
 project_topics:
   asr: ""
   audio_event: ""
+  tts_cmd: ""
 """,
         encoding="utf-8",
     )
 
     with pytest.raises(
         ValueError,
-        match="missing topic config: native_topics.audio_msg, project_topics.asr, project_topics.audio_event",
+        match="missing topic config: native_topics.audio_msg, project_topics.asr, project_topics.audio_event, project_topics.tts_cmd",
     ):
         G1InterfaceConfig.from_yaml(config_path)
 
