@@ -29,6 +29,19 @@ def _float_value(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _temperature_value(value: Any, default: float = 0.0) -> float:
+    """Normalize HG MotorState.temperature (int16[2]) to its hottest sensor."""
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        values = []
+        for item in value:
+            try:
+                values.append(float(item))
+            except (TypeError, ValueError):
+                continue
+        return max(values) if values else default
+    return _float_value(value, default)
+
+
 def lowstate_to_summary(msg: object, source: str, max_motors: int = 35) -> LowStateSummary:
     imu_state = getattr(msg, "imu_state", msg)
     motors = []
@@ -38,7 +51,7 @@ def lowstate_to_summary(msg: object, source: str, max_motors: int = 35) -> LowSt
                 "q": _float_value(getattr(motor, "q", 0.0)),
                 "dq": _float_value(getattr(motor, "dq", 0.0)),
                 "tau_est": _float_value(getattr(motor, "tau_est", 0.0)),
-                "temperature": _float_value(getattr(motor, "temperature", 0.0)),
+                "temperature": _temperature_value(getattr(motor, "temperature", 0.0)),
             }
         )
 

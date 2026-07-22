@@ -55,7 +55,8 @@ def test_lowstate_summary_reads_official_nested_imu_state_and_temperature_array(
 
     assert summary.rpy == [0.1, 0.2, 0.3]
     assert summary.gyroscope == [0.4, 0.5, 0.6]
-    assert summary.motors[0]["temperature"] == 41.0
+    assert summary.motors[0]["temperature"] == 42.0
+    assert summary.max_temperature_c == 42.0
 
 
 def test_imu_payload_uses_ros_quaternion_order():

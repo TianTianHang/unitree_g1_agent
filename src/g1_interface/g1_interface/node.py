@@ -1,5 +1,5 @@
 # Backend-specific initialization guarantees these optional collaborators before
-# their matching callbacks are registered; Humble's stubs do not preserve that narrowing.
+# their matching callbacks are registered; ROS type stubs do not preserve that narrowing.
 # pyright: reportOptionalMemberAccess=false
 
 from __future__ import annotations
