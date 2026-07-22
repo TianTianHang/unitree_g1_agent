@@ -27,7 +27,7 @@
 
 - `pyproject.toml` 与 `uv.lock` 要求 Python 3.10；
 - Ruff、Pyright 以 Python 3.10 为目标；
-- `flake.nix` 和 `nix/pkgs/unitree-ros2.nix` 仍指向旧 ROS 环境；
+- Unitree SDK2/ROS2 尚未统一纳入源码构建入口；
 - README、设计文档和实机清单仍包含旧环境命令；
 - 部分依赖版本尚未确认是否支持 Python 3.8。
 

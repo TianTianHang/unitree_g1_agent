@@ -6,26 +6,21 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
       - uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: humble
-      - uses: cachix/install-nix-action@v31
-      - uses: astral-sh/setup-uv@v6
-        with:
-          version: "0.11.26"
+          required-ros-distributions: foxy
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: src/voice_bridge_debug/frontend/package-lock.json
-      - run: nix build .#unitree-ros2
-      - run: make bootstrap
-      - run: make build
-      - run: make test
-      - run: make check-textop-core
-      - run: make test-integration
+      - run: sudo apt-get update && sudo apt-get install -y ros-foxy-rmw-cyclonedds-cpp ros-foxy-rosidl-generator-dds-idl
+      - run: make unitree-build
+      - run: make foxy-build
+      - run: make foxy-test-core
+      - run: make foxy-test-integration
       - run: make frontend
       - run: make lint

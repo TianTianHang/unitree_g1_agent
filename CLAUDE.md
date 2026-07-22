@@ -98,18 +98,18 @@ Key G1 API IDs:
 
 ## Development Environment
 
-The repository uses Nix for reproducible setup, but ROS 2 Foxy is the current real-robot baseline.
+ROS 2 Foxy is the current real-robot baseline. Unitree SDK2 and ROS2 message packages are
+downloaded and built from pinned source revisions by the Makefile.
 
 ```bash
-nix develop
-nix build .#unitree-sdk2
-nix build .#unitree-ros2
-nix build .#default
+make unitree-source
+make unitree-build
+make foxy-build
 ```
 
 ROS2/CycloneDDS prerequisites:
 
-- Source `/opt/ros/foxy/setup.bash` when not inside the Nix development shell.
+- Source `/opt/ros/foxy/setup.bash` before using the built Unitree overlay.
 - Use `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`.
 - Set `CYCLONEDDS_URI` to the robot network interface for hardware, or `lo` for local simulation.
 - Typical Unitree robot network: `192.168.123.0/24`.

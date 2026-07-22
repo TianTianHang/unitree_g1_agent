@@ -29,15 +29,14 @@ ros2 launch g1_bringup g1_system.launch.py motion_backend:=textop
 
 先准备 Unitree 官方 ROS 2 消息 overlay。以下方式任选其一：
 
-- `result` 指向包含 ROS overlay 的 Nix 构建结果；
-- 已构建官方 `unitree_ros2/cyclonedds_ws`，并通过
-  `UNITREE_ROS2_WS=/absolute/path/to/cyclonedds_ws` 指定；
-- 官方 workspace 位于主 checkout 的
-  `.unitree/unitree_ros2/cyclonedds_ws`，Makefile 会自动发现。
+- Makefile 会把固定版本的 `unitree_sdk2` 和 `unitree_ros2` 源码下载到 `.unitree/`；
+- 可通过 `UNITREE_ROS2_WS=/absolute/path/to/cyclonedds_ws` 覆盖 Unitree ROS2 workspace；
+- 默认 workspace 为 `.unitree/unitree_ros2/cyclonedds_ws`。
 
 随后执行：
 
 ```bash
+make unitree-build
 make foxy-build
 make foxy-test-core
 make foxy-test-integration
@@ -47,14 +46,39 @@ make check-textop-core
 
 `make foxy-build` 会加载 `/opt/ros/foxy` 和 Unitree Foxy overlay，并将构建产物写入 `build-foxy/`、`install-foxy/` 和 `log-foxy/`。TextOp 的大体积 GPU 依赖仍通过显式的 `make bootstrap-textop` 管理。
 
+## 从全新 clone 启动
+
+```bash
+git clone https://github.com/TianTianHang/unitree_g1_agent.git
+cd unitree_g1_agent
+
+# 下载固定 revision，并从源码构建/安装 Unitree SDK2 与 ROS2 消息 overlay
+make unitree-build
+
+# 构建项目 Foxy overlay
+make foxy-build
+
+# 每个新终端按此顺序加载环境
+source /opt/ros/foxy/setup.bash
+source .unitree/unitree_ros2/cyclonedds_ws/install-foxy/setup.bash
+source install-foxy/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# 本地仿真启动
+ros2 launch g1_bringup g1_system.launch.py \
+  motion_backend:=official_loco start_sim:=true
+```
+
+SDK2 安装到 `.unitree/install/sdk2/`。在外部 CMake 工程中使用时，将该目录加入
+`CMAKE_PREFIX_PATH`，并将 `.unitree/install/sdk2/lib` 加入 `LD_LIBRARY_PATH`。
+
 如需自定义 Unitree workspace：
 
 ```bash
 UNITREE_ROS2_WS=/opt/unitree_ros2/cyclonedds_ws make foxy-build
 ```
 
-Nix 仅是可选的 Unitree SDK/ROS overlay 获取方式，不参与 Python 环境
-管理；本地开发和验证不要求 Nix 可用。
+Unitree SDK2 和 ROS2 overlay 均由 Makefile 从固定源码版本构建。
 
 ## TextOp 治理与验收
 

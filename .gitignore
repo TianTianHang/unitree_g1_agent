@@ -9,9 +9,6 @@ build-foxy/
 install-foxy/
 log-foxy/
 
-# Nix
-result*
-
 # Python
 __pycache__/
 *.py[cod]

@@ -12,9 +12,20 @@ TEXTOP_CLIP_PATH := $(COMMON_REPO_ROOT)/.unitree/models/textop/ViT-B-32.pt
 TEXTOP_CLIP_SHA256 := 40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af
 TEXTOP_CLIP_URL := https://openaipublic.azureedge.net/clip/models/$(TEXTOP_CLIP_SHA256)/ViT-B-32.pt
 UNITREE_ROS2_WS ?= $(COMMON_REPO_ROOT)/.unitree/unitree_ros2/cyclonedds_ws
-UNITREE_SETUP := $(UNITREE_ROS2_WS)/install/setup.bash
+UNITREE_ROOT ?= $(COMMON_REPO_ROOT)/.unitree
+UNITREE_SDK2_DIR ?= $(UNITREE_ROOT)/unitree_sdk2
+UNITREE_SDK2_REPO ?= https://github.com/unitreerobotics/unitree_sdk2.git
+UNITREE_SDK2_REF ?= 7740f8b67e386ab09c3b333187fd5f8582a75ddc
+UNITREE_SDK2_BUILD_BASE ?= $(UNITREE_ROOT)/build/unitree_sdk2
+UNITREE_SDK2_INSTALL_PREFIX ?= $(UNITREE_ROOT)/install/sdk2
+UNITREE_ROS2_DIR ?= $(UNITREE_ROOT)/unitree_ros2
+UNITREE_ROS2_REPO ?= https://github.com/unitreerobotics/unitree_ros2.git
+UNITREE_ROS2_REF ?= 668d1ec5a05d1c38d3306bdca7d59f2ba3581a88
+UNITREE_ROS2_BUILD_BASE ?= $(UNITREE_ROS2_WS)/build-foxy
+UNITREE_ROS2_INSTALL_BASE ?= $(UNITREE_ROS2_WS)/install-foxy
+UNITREE_ROS2_LOG_BASE ?= $(UNITREE_ROS2_WS)/log-foxy
 FOXY_SETUP ?= /opt/ros/foxy/setup.bash
-FOXY_UNITREE_SETUP ?= $(UNITREE_ROS2_WS)/install-foxy/setup.bash
+FOXY_UNITREE_SETUP ?= $(UNITREE_ROS2_INSTALL_BASE)/setup.bash
 FOXY_BUILD_BASE := $(COMMON_REPO_ROOT)/build-foxy
 FOXY_INSTALL_BASE := $(COMMON_REPO_ROOT)/install-foxy
 FOXY_LOG_BASE := $(COMMON_REPO_ROOT)/log-foxy
@@ -34,15 +45,13 @@ PYTEST_PATHS := \
 	src/textop_backend/tests \
 	src/voice_bridge/tests \
 	src/voice_bridge_debug/tests
-ROS_SETUP := source /opt/ros/humble/setup.bash; \
-	if [[ -f result/setup.bash ]]; then \
-		source result/setup.bash; \
-	elif ros2 pkg prefix unitree_api >/dev/null 2>&1; then \
-		:; \
-	elif [[ -f "$(UNITREE_SETUP)" ]]; then \
-		source "$(UNITREE_SETUP)"; \
+ROS_SETUP := source "$(FOXY_SETUP)"; \
+	if [[ -f "$(FOXY_UNITREE_SETUP)" ]]; then \
+		source "$(FOXY_UNITREE_SETUP)"; \
+		export CMAKE_PREFIX_PATH="$(UNITREE_SDK2_INSTALL_PREFIX):$${CMAKE_PREFIX_PATH:-}"; \
+		export LD_LIBRARY_PATH="$(UNITREE_SDK2_INSTALL_PREFIX)/lib:$${LD_LIBRARY_PATH:-}"; \
 	else \
-		echo "Unitree ROS 2 overlay not found; build UNITREE_ROS2_WS or provide result/setup.bash" >&2; \
+		echo "Unitree Foxy overlay not found; run 'make unitree-ros2-build'" >&2; \
 		exit 1; \
 	fi
 
@@ -53,7 +62,49 @@ export TEXTOP_CUDNN_LIB_DIR
 
 .PHONY: bootstrap-env bootstrap bootstrap-asr bootstrap-textop-env bootstrap-textop build build-textop \
 	test test-textop test-integration lint lint-textop check-textop-core check-textop frontend \
+	unitree-source unitree-sdk2-source unitree-ros2-source unitree-sdk2-build unitree-ros2-build unitree-build \
 	foxy-build foxy-test-core foxy-test-integration
+
+unitree-sdk2-source:
+	@mkdir -p "$(UNITREE_ROOT)"
+	@if [[ ! -d "$(UNITREE_SDK2_DIR)/.git" ]]; then \
+		git clone "$(UNITREE_SDK2_REPO)" "$(UNITREE_SDK2_DIR)"; \
+	fi
+	@git -C "$(UNITREE_SDK2_DIR)" remote set-url origin "$(UNITREE_SDK2_REPO)"
+	@if ! git -C "$(UNITREE_SDK2_DIR)" cat-file -e "$(UNITREE_SDK2_REF)^{commit}"; then \
+		git -C "$(UNITREE_SDK2_DIR)" fetch --depth=1 origin "$(UNITREE_SDK2_REF)"; \
+	fi
+	@git -C "$(UNITREE_SDK2_DIR)" checkout --detach "$(UNITREE_SDK2_REF)"
+
+unitree-ros2-source:
+	@mkdir -p "$(UNITREE_ROOT)"
+	@if [[ ! -d "$(UNITREE_ROS2_DIR)/.git" ]]; then \
+		git clone "$(UNITREE_ROS2_REPO)" "$(UNITREE_ROS2_DIR)"; \
+	fi
+	@git -C "$(UNITREE_ROS2_DIR)" remote set-url origin "$(UNITREE_ROS2_REPO)"
+	@if ! git -C "$(UNITREE_ROS2_DIR)" cat-file -e "$(UNITREE_ROS2_REF)^{commit}"; then \
+		git -C "$(UNITREE_ROS2_DIR)" fetch --depth=1 origin "$(UNITREE_ROS2_REF)"; \
+	fi
+	@git -C "$(UNITREE_ROS2_DIR)" checkout --detach "$(UNITREE_ROS2_REF)"
+
+unitree-source: unitree-sdk2-source unitree-ros2-source
+
+unitree-sdk2-build: unitree-sdk2-source
+	@cmake -S "$(UNITREE_SDK2_DIR)" -B "$(UNITREE_SDK2_BUILD_BASE)" \
+		-DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX="$(UNITREE_SDK2_INSTALL_PREFIX)"
+	@cmake --build "$(UNITREE_SDK2_BUILD_BASE)" --parallel
+	@cmake --install "$(UNITREE_SDK2_BUILD_BASE)"
+
+unitree-ros2-build: unitree-ros2-source
+	@test -f "$(FOXY_SETUP)"
+	@cd "$(UNITREE_ROS2_WS)"; source "$(FOXY_SETUP)"; \
+		colcon --log-base "$(UNITREE_ROS2_LOG_BASE)" build --symlink-install \
+			--build-base "$(UNITREE_ROS2_BUILD_BASE)" \
+			--install-base "$(UNITREE_ROS2_INSTALL_BASE)" \
+			--event-handlers console_direct+
+
+unitree-build: unitree-sdk2-build unitree-ros2-build
 
 bootstrap-env:
 	@test "$$($(abspath /usr/bin/python3) -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.10"
@@ -87,16 +138,21 @@ bootstrap-textop: bootstrap-textop-env
 	fi
 	@echo "$(TEXTOP_CLIP_SHA256)  $(TEXTOP_CLIP_PATH)" | sha256sum --check -
 
-build: bootstrap
-	@$(ROS_SETUP); colcon build --symlink-install --event-handlers console_direct+
+build: foxy-build
 
-# ROS 2 Foxy is kept in a separate colcon overlay and Python 3.8 process.  Do
-# not reuse the Humble/Python 3.10 install tree or the TextOp environment here.
-foxy-build:
+test: foxy-test-core
+
+test-integration: foxy-test-integration
+
+# ROS 2 Foxy is kept in a separate colcon overlay and Python 3.8 process.
+# Do not reuse the TextOp Python 3.10 environment here.
+foxy-build: unitree-build
 	@test -f "$(FOXY_SETUP)"
-	@test -f "$(FOXY_UNITREE_SETUP)" || { echo "Unitree Foxy overlay not found: $(FOXY_UNITREE_SETUP)" >&2; exit 1; }
+	@test -f "$(FOXY_UNITREE_SETUP)"
 	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; \
 		test "$$(python3 -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.8"; \
+		export CMAKE_PREFIX_PATH="$(UNITREE_SDK2_INSTALL_PREFIX):$${CMAKE_PREFIX_PATH:-}"; \
+		export LD_LIBRARY_PATH="$(UNITREE_SDK2_INSTALL_PREFIX)/lib:$${LD_LIBRARY_PATH:-}"; \
 		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; \
 		colcon --log-base "$(FOXY_LOG_BASE)" build --symlink-install \
 			--build-base "$(FOXY_BUILD_BASE)" --install-base "$(FOXY_INSTALL_BASE)" \
@@ -130,25 +186,12 @@ build-textop: build bootstrap-textop
 		--build-base $(TEXTOP_BUILD_BASE) --install-base $(TEXTOP_INSTALL_BASE) \
 		--symlink-install --event-handlers console_direct+
 
-test: build
-	@$(ROS_SETUP); source install/setup.bash; set -e; \
-		for test_path in $(PYTEST_PATHS); do \
-			$(UV_RUN) python -m pytest -q "$$test_path"; \
-		done
-	@$(ROS_SETUP); source install/setup.bash; \
-		colcon test --packages-select low_level_guard --event-handlers console_direct+; \
-		colcon test-result --test-result-base build/low_level_guard/test_results --verbose
-
-test-integration: build
-	@$(ROS_SETUP); source install/setup.bash; colcon test --packages-select g1_system_tests --event-handlers console_direct+
-	@$(ROS_SETUP); source install/setup.bash; colcon test-result --test-result-base build/g1_system_tests/test_results --verbose
-
-lint: build
-	@$(ROS_SETUP); source install/setup.bash; $(UV_RUN) ruff check src
-	@$(ROS_SETUP); source install/setup.bash; $(UV_RUN) pyright
+lint: build bootstrap
+	@$(ROS_SETUP); source install-foxy/setup.bash; $(UV_RUN) ruff check src
+	@$(ROS_SETUP); source install-foxy/setup.bash; $(UV_RUN) pyright
 
 test-textop: build-textop
-	@$(ROS_SETUP); source install/setup.bash; source $(TEXTOP_INSTALL_BASE)/setup.bash; \
+	@$(ROS_SETUP); source install-foxy/setup.bash; source $(TEXTOP_INSTALL_BASE)/setup.bash; \
 		$(TEXTOP_UV_RUN) python -m pytest -q src/textop_backend/tests
 
 lint-textop: bootstrap
