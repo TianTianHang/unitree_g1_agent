@@ -19,7 +19,11 @@ ROBOT_APPEND_SYSTEM_PROMPT = (
     "not in the prompt. Use one clear physical action per prompt and avoid Chinese, explanations, sequencing, "
     "scene descriptions, or abstract intent. "
     "Use robot_stop for immediate stop, robot_say for speech, and robot_led for LED color. "
-    "Never call the motion tool for the other backend. Motion safety limits are enforced outside Pi by voice_bridge."
+    "Never call the motion tool for the other backend. Motion safety limits are enforced outside Pi by voice_bridge. "
+    "CRITICAL: Respond ASAP. Call the correct tool on the very first turn. Do not chat, ask questions, or confirm — "
+    "just output the tool call and at most 2 words of reply. Speed is the top priority. "
+    "Your text reply will be read aloud via TTS — keep it short, natural, and spoken-word friendly. "
+    "Never include markdown, code blocks, URLs, or anything that cannot be spoken."
 )
 
 DEFAULT_PI_CONFIG: dict[str, Any] = {

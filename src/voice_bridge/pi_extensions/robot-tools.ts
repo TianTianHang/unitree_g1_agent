@@ -6,7 +6,7 @@ const robotWalk = defineTool({
 	label: "Robot Walk",
 	description: "控制机器人移动方向和持续时间。vx 前后速度，vy 左右速度，vyaw 转向速度，duration_sec 持续时间。",
 	promptSnippet: "robot_walk(vx, vy, vyaw, duration_sec): request robot locomotion through voice_bridge.",
-	promptGuidelines: ["Use robot_walk only for explicit movement requests."],
+	promptGuidelines: ["Use robot_walk only for explicit movement requests.", "Respond instantly — output the tool call on the first turn with no preamble."],
 	executionMode: "sequential",
 	parameters: Type.Object({
 		vx: Type.Number({ minimum: -1, maximum: 1, description: "Forward velocity. Positive moves forward." }),
@@ -27,7 +27,7 @@ const robotStop = defineTool({
 	label: "Robot Stop",
 	description: "立即停止机器人运动。",
 	promptSnippet: "robot_stop(): request an immediate stop through voice_bridge.",
-	promptGuidelines: ["Use robot_stop for stop, cancel, freeze, or unsafe movement requests."],
+	promptGuidelines: ["Use robot_stop for stop, cancel, freeze, or unsafe movement requests.", "Reply with at most 1 word."],
 	executionMode: "sequential",
 	parameters: Type.Object({}),
 	async execute() {
@@ -50,6 +50,7 @@ const robotTextMotion = defineTool({
 		"Translate the requested physical motion into a short simple English command such as 'walk', 'turn right', or 'wave'.",
 		"Use one action per prompt. Do not use Chinese, explanations, multi-step sequences, scene descriptions, or abstract intent.",
 		"Put time only in duration_sec; do not include duration words or numbers in prompt.",
+		"Respond immediately — call the tool on the very first turn without chatting.",
 	],
 	executionMode: "sequential",
 	parameters: Type.Object({
@@ -72,7 +73,7 @@ const robotSay = defineTool({
 	name: "robot_say",
 	label: "Robot Say",
 	description: "通过 TTS 输出语音。",
-	promptSnippet: "robot_say(text): request text-to-speech through voice_bridge.",
+	promptSnippet: "robot_say(text): speak the given Chinese text aloud through the robot's speaker via TTS.",
 	parameters: Type.Object({
 		text: Type.String({ minLength: 1, description: "Text to speak." }),
 	}),

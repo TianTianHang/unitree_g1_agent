@@ -235,7 +235,7 @@ def _build_prompt_text(request: AgentRequest) -> str:
         context_parts.append(f"safety_state: {request.safety_state}")
     if request.health_state:
         context_parts.append(f"health_state: {request.health_state}")
-    return f"Robot context:\n{chr(10).join(context_parts)}\n\nUser said: {request.text}"
+    return f"Robot context:\n{chr(10).join(context_parts)}\n\nRespond ASAP. User said: {request.text}"
 
 
 def _extract_reply_text(events: list[dict[str, Any]]) -> str | None:
