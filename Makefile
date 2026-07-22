@@ -13,6 +13,18 @@ TEXTOP_CLIP_SHA256 := 40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eb
 TEXTOP_CLIP_URL := https://openaipublic.azureedge.net/clip/models/$(TEXTOP_CLIP_SHA256)/ViT-B-32.pt
 UNITREE_ROS2_WS ?= $(COMMON_REPO_ROOT)/.unitree/unitree_ros2/cyclonedds_ws
 UNITREE_SETUP := $(UNITREE_ROS2_WS)/install/setup.bash
+FOXY_SETUP ?= /opt/ros/foxy/setup.bash
+FOXY_UNITREE_SETUP ?= $(UNITREE_ROS2_WS)/install-foxy/setup.bash
+FOXY_BUILD_BASE := $(COMMON_REPO_ROOT)/build-foxy
+FOXY_INSTALL_BASE := $(COMMON_REPO_ROOT)/install-foxy
+FOXY_LOG_BASE := $(COMMON_REPO_ROOT)/log-foxy
+FOXY_PYTEST_PATHS := \
+	src/g1_agent_msgs/test \
+	src/asr_node/tests \
+	src/g1_interface/tests \
+	src/g1_sim/tests \
+	src/safety_control/tests \
+	src/voice_bridge/tests
 PYTEST_PATHS := \
 	src/g1_agent_msgs/test \
 	src/asr_node/tests \
@@ -40,7 +52,8 @@ export UV_PROJECT_ENVIRONMENT := $(ROS_ENV)
 export TEXTOP_CUDNN_LIB_DIR
 
 .PHONY: bootstrap-env bootstrap bootstrap-asr bootstrap-textop-env bootstrap-textop build build-textop \
-	test test-textop test-integration lint lint-textop check-textop-core check-textop frontend
+	test test-textop test-integration lint lint-textop check-textop-core check-textop frontend \
+	foxy-build foxy-test-core foxy-test-integration
 
 bootstrap-env:
 	@test "$$($(abspath /usr/bin/python3) -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.10"
@@ -76,6 +89,40 @@ bootstrap-textop: bootstrap-textop-env
 
 build: bootstrap
 	@$(ROS_SETUP); colcon build --symlink-install --event-handlers console_direct+
+
+# ROS 2 Foxy is kept in a separate colcon overlay and Python 3.8 process.  Do
+# not reuse the Humble/Python 3.10 install tree or the TextOp environment here.
+foxy-build:
+	@test -f "$(FOXY_SETUP)"
+	@test -f "$(FOXY_UNITREE_SETUP)" || { echo "Unitree Foxy overlay not found: $(FOXY_UNITREE_SETUP)" >&2; exit 1; }
+	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; \
+		test "$$(python3 -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.8"; \
+		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; \
+		colcon --log-base "$(FOXY_LOG_BASE)" build --symlink-install \
+			--build-base "$(FOXY_BUILD_BASE)" --install-base "$(FOXY_INSTALL_BASE)" \
+			--event-handlers console_direct+
+
+foxy-test-core: foxy-build
+	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; set -e; \
+		for test_path in $(FOXY_PYTEST_PATHS); do python3 -m pytest -q "$$test_path"; done
+	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+		colcon --log-base "$(FOXY_LOG_BASE)" test \
+			--build-base "$(FOXY_BUILD_BASE)" --install-base "$(FOXY_INSTALL_BASE)" \
+			--packages-select low_level_guard --event-handlers console_direct+; \
+		colcon test-result --test-result-base "$(FOXY_BUILD_BASE)/low_level_guard/test_results" --verbose
+
+foxy-test-integration: foxy-build
+	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; \
+		if [[ -d "$(FOXY_BUILD_BASE)/g1_system_tests/test_results" ]]; then \
+			find "$(FOXY_BUILD_BASE)/g1_system_tests/test_results" -type f -delete; \
+		fi; \
+		colcon --log-base "$(FOXY_LOG_BASE)" test \
+			--build-base "$(FOXY_BUILD_BASE)" --install-base "$(FOXY_INSTALL_BASE)" \
+			--packages-select g1_system_tests \
+			--ctest-args -R typed_control_chain --event-handlers console_direct+; \
+		colcon test-result --test-result-base "$(FOXY_BUILD_BASE)/g1_system_tests/test_results" --verbose
 
 build-textop: build bootstrap-textop
 	@$(ROS_SETUP); $(TEXTOP_ENV)/bin/python -m colcon build \

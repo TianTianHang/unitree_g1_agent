@@ -5,6 +5,9 @@ log/
 result/
 build-textop/
 install-textop/
+build-foxy/
+install-foxy/
+log-foxy/
 
 # Nix
 result*
