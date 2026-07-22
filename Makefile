@@ -57,8 +57,16 @@ ROS_SETUP := source "$(FOXY_SETUP)"; \
 
 export PYTHONNOUSERSITE := 1
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD := 1
-export UV_PROJECT_ENVIRONMENT := $(ROS_ENV)
 export TEXTOP_CUDNN_LIB_DIR
+
+# System Python path for ROS 2 builds (bypass conda/venv interference)
+SYSTEM_PYTHON := /usr/bin/python3
+
+# Strip conda/miniconda from PATH and ensure system /usr/bin comes first
+define CLEAN_FOR_ROS
+	unset CONDA_PREFIX CONDA_DEFAULT_ENV CONDA_EXE CONDA_PYTHON_EXE 2>/dev/null; \
+	export PATH="/usr/bin:$$(printf "%s" "$$PATH" | tr ':' '\n' | awk '!/conda/' | tr '\n' ':')"
+endef
 
 .PHONY: bootstrap-env bootstrap bootstrap-asr bootstrap-textop-env bootstrap-textop build build-textop \
 	test test-textop test-integration lint lint-textop check-textop-core check-textop frontend \
@@ -90,15 +98,18 @@ unitree-ros2-source:
 unitree-source: unitree-sdk2-source unitree-ros2-source
 
 unitree-sdk2-build: unitree-sdk2-source
-	@cmake -S "$(UNITREE_SDK2_DIR)" -B "$(UNITREE_SDK2_BUILD_BASE)" \
-		-DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX="$(UNITREE_SDK2_INSTALL_PREFIX)"
-	@cmake --build "$(UNITREE_SDK2_BUILD_BASE)" --parallel
-	@cmake --install "$(UNITREE_SDK2_BUILD_BASE)"
+	@$(CLEAN_FOR_ROS); \
+		cmake -S "$(UNITREE_SDK2_DIR)" -B "$(UNITREE_SDK2_BUILD_BASE)" \
+			-DBUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX="$(UNITREE_SDK2_INSTALL_PREFIX)" \
+			-DPYTHON_EXECUTABLE=$(SYSTEM_PYTHON)
+	@$(CLEAN_FOR_ROS); cmake --build "$(UNITREE_SDK2_BUILD_BASE)" --parallel
+	@$(CLEAN_FOR_ROS); cmake --install "$(UNITREE_SDK2_BUILD_BASE)"
 
 unitree-ros2-build: unitree-ros2-source
 	@test -f "$(FOXY_SETUP)"
-	@cd "$(UNITREE_ROS2_WS)"; source "$(FOXY_SETUP)"; \
+	@cd "$(UNITREE_ROS2_WS)"; $(CLEAN_FOR_ROS); source "$(FOXY_SETUP)"; \
+		echo "[unitree-ros2-build] using $$(command -v python3) ($$(python3 --version 2>&1))"; \
 		colcon --log-base "$(UNITREE_ROS2_LOG_BASE)" build --symlink-install \
 			--build-base "$(UNITREE_ROS2_BUILD_BASE)" \
 			--install-base "$(UNITREE_ROS2_INSTALL_BASE)" \
@@ -114,10 +125,10 @@ bootstrap-env:
 	@grep -Fq 'include-system-site-packages = true' $(ROS_ENV)/pyvenv.cfg
 
 bootstrap: bootstrap-env
-	@uv sync --frozen
+	@UV_PROJECT_ENVIRONMENT=$(ROS_ENV) uv sync --frozen
 
 bootstrap-asr: bootstrap-env
-	@uv sync --frozen --group asr
+	@UV_PROJECT_ENVIRONMENT=$(ROS_ENV) uv sync --frozen --group asr
 
 bootstrap-textop-env:
 	@test "$$($(abspath /usr/bin/python3) -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.10"
@@ -149,7 +160,8 @@ test-integration: foxy-test-integration
 foxy-build: unitree-build
 	@test -f "$(FOXY_SETUP)"
 	@test -f "$(FOXY_UNITREE_SETUP)"
-	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; \
+	@$(CLEAN_FOR_ROS); source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; \
+		echo "[foxy-build] using $$(command -v python3) ($$(python3 --version 2>&1))"; \
 		test "$$(python3 -c 'import sys; print(str(sys.version_info.major) + "." + str(sys.version_info.minor))')" = "3.8"; \
 		export CMAKE_PREFIX_PATH="$(UNITREE_SDK2_INSTALL_PREFIX):$${CMAKE_PREFIX_PATH:-}"; \
 		export LD_LIBRARY_PATH="$(UNITREE_SDK2_INSTALL_PREFIX)/lib:$${LD_LIBRARY_PATH:-}"; \
@@ -159,17 +171,19 @@ foxy-build: unitree-build
 			--event-handlers console_direct+
 
 foxy-test-core: foxy-build
-	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+	@$(CLEAN_FOR_ROS); source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+		echo "[foxy-test-core] using $$(command -v python3) ($$(python3 --version 2>&1))"; \
 		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; set -e; \
 		for test_path in $(FOXY_PYTEST_PATHS); do python3 -m pytest -q "$$test_path"; done
-	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+	@$(CLEAN_FOR_ROS); source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
 		colcon --log-base "$(FOXY_LOG_BASE)" test \
 			--build-base "$(FOXY_BUILD_BASE)" --install-base "$(FOXY_INSTALL_BASE)" \
 			--packages-select low_level_guard --event-handlers console_direct+; \
 		colcon test-result --test-result-base "$(FOXY_BUILD_BASE)/low_level_guard/test_results" --verbose
 
 foxy-test-integration: foxy-build
-	@source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+	@$(CLEAN_FOR_ROS); source "$(FOXY_SETUP)"; source "$(FOXY_UNITREE_SETUP)"; source "$(FOXY_INSTALL_BASE)/setup.bash"; \
+		echo "[foxy-test-integration] using $$(command -v python3) ($$(python3 --version 2>&1))"; \
 		export RMW_IMPLEMENTATION=$${RMW_IMPLEMENTATION:-rmw_cyclonedds_cpp}; \
 		if [[ -d "$(FOXY_BUILD_BASE)/g1_system_tests/test_results" ]]; then \
 			find "$(FOXY_BUILD_BASE)/g1_system_tests/test_results" -type f -delete; \
