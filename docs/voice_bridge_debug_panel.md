@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-- 已安装 ROS 2 Humble，并能 `source /opt/ros/humble/setup.bash`。
+- 已安装 ROS 2 Foxy，并能 `source /opt/ros/foxy/setup.bash`。
 - 已在仓库根目录完成依赖安装和构建。
 - 如需重新构建前端，需要本机可用 `node`/`npm`。
 
@@ -15,8 +15,8 @@
 在仓库根目录执行：
 
 ```bash
-make build
-source install/setup.bash
+make foxy-build
+source install-foxy/setup.bash
 ros2 run voice_bridge_debug debug_panel_server -- --prod
 ```
 
@@ -33,8 +33,9 @@ http://127.0.0.1:8765
 调试面板只负责发布模拟 ASR 和观察 topic；要看到完整 agent 输出、决策和命令链，还需要另开一个终端启动 `voice_bridge`：
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source /opt/ros/foxy/setup.bash
+source .unitree/unitree_ros2/cyclonedds_ws/install-foxy/setup.bash
+source install-foxy/setup.bash
 ros2 launch voice_bridge voice_bridge.launch.py \
   config_path:=src/voice_bridge/config/voice_bridge.yaml
 ```
@@ -48,8 +49,9 @@ ros2 launch voice_bridge voice_bridge.launch.py \
 终端 1：启动后端 API 和 WebSocket，不带 `--prod`：
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source /opt/ros/foxy/setup.bash
+source .unitree/unitree_ros2/cyclonedds_ws/install-foxy/setup.bash
+source install-foxy/setup.bash
 ros2 run voice_bridge_debug debug_panel_server
 ```
 
@@ -78,7 +80,7 @@ Vite 已配置代理：
 
 ```bash
 make frontend
-make build
+make foxy-build
 ```
 
 Vite 已直接把产物写入 Python 包的 `frontend_dist`。`make frontend` 会用
@@ -106,8 +108,9 @@ src/voice_bridge_debug/config/debug_panel.yaml
 使用自定义配置启动：
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source /opt/ros/foxy/setup.bash
+source .unitree/unitree_ros2/cyclonedds_ws/install-foxy/setup.bash
+source install-foxy/setup.bash
 ros2 run voice_bridge_debug debug_panel_server -- \
   --config /path/to/debug_panel.yaml \
   --prod
@@ -127,5 +130,5 @@ ros2 run voice_bridge_debug debug_panel_server -- \
 - 页面打不开：确认 `ros2 run voice_bridge_debug debug_panel_server -- --prod` 仍在运行，并检查端口是否是 `8765`。
 - 页面有但无事件：确认 `voice_bridge` 已启动，并检查 `/voice/debug/events` 是否有消息。
 - ASR 没有效果：确认 `/g1/audio/asr` topic 与 `voice_bridge` 配置一致。
-- `--prod` 报 `frontend static directory not found`：在仓库根目录执行 `make frontend` 和 `make build`。
+- `--prod` 报 `frontend static directory not found`：在仓库根目录执行 `make frontend` 和 `make foxy-build`。
 - 绑定 `0.0.0.0` 失败：配置里必须设置 `server.allow_remote: true`。

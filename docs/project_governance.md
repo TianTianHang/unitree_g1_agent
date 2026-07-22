@@ -21,16 +21,16 @@ GPU 组合。
 
 | 环境 | 用途 | 允许的依赖组 |
 | --- | --- | --- |
-| `.venv-ros` | 构建、普通测试、lint、调试面板 | 默认组；可显式切换到 ASR 组 |
+| Foxy 系统 Python 3.8 + `install-foxy` | ROS 构建、普通测试、调试面板 | 系统 ROS 依赖 |
 | `.venv-textop` | TextOp generator/tracker、GPU 测试 | `textop` |
 | `.unitree/textop-cudnn8-venv` | 仅提供 ORT 所需 cuDNN 8 动态库 | `textop_cudnn8` |
 
-禁止把 TextOp 依赖同步到 `.venv-ros`，也禁止节点引用相邻 checkout 的虚拟环境。
+禁止把 TextOp 依赖同步到 Foxy 系统环境，也禁止节点引用相邻 checkout 的虚拟环境。
 
 ## 质量门禁
 
-- `make test`：所有普通 ROS 包及 TextOp 轻量测试、低层守卫测试；
-- `make test-integration`：强类型控制链 ROS launch 测试；
+- `make foxy-test-core`：所有普通 ROS 包及 TextOp 轻量测试、低层守卫测试；
+- `make foxy-test-integration`：强类型控制链 ROS launch 测试；
 - `make lint`：自研 Python 源码的 Ruff 与 Pyright；
 - `make check-textop-core`：普通 CI 可运行的 TextOp 测试和静态检查；
 - `make check-textop`：独立推理环境中的 TextOp 完整包测试与静态检查；

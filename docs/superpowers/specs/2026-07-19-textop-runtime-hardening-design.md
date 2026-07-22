@@ -1,6 +1,6 @@
 # TextOp Direct Runtime Hardening Design
 
-> 历史设计：正式 TextOp 解释器现为独立 `.venv-textop`，不再是 `.venv-ros`。当前治理基线见
+> 历史设计：正式 TextOp 解释器现为独立 `.venv-textop`，不再是 Foxy 系统环境。当前治理基线见
 > [`docs/project_governance.md`](../../project_governance.md)。
 
 ## Goal
@@ -12,11 +12,11 @@
 
 在根 `pyproject.toml` 增加 `textop` dependency group，固定声明 generator 与 tracker 的
 第三方运行依赖。推理源码继续直接位于 `src/textop_backend/textop_backend/textop_model`，
-不会构建独立 inference wheel。`.venv-ros` 是正式运行解释器，外部 TextOp `.venv` 仅可
+不会构建独立 inference wheel。`.venv-textop` 是 TextOp 正式运行解释器，外部 TextOp `.venv` 仅可
 用于迁移期间对照，不是验收入口。
 
 GPU 运行栈使用 CUDA 11.8。Generator 的 Torch/cuDNN 9 与 Tracker 所需 cuDNN 8 分别位于
-主 `.venv-ros` 和独立 uv 锁定环境中；Tracker 显式预加载 cuDNN 8 后再创建 ONNX session。
+独立 `.venv-textop` 和 cuDNN 8 锁定环境中；Tracker 显式预加载 cuDNN 8 后再创建 ONNX session。
 
 ## Artifact boundary
 
@@ -42,6 +42,6 @@ CPU fallback、其他 GPU fallback、official loco failover 和运行时 backend
 ## Verification
 
 - 单元测试覆盖 manifest CLIP 制品、固定模型配置、离线 CLIP 路径和废弃参数移除。
-- uv lock 与项目 `.venv-ros` 同步后，直接从项目解释器导入 Torch、CLIP、einops。
+- uv lock 与项目 `.venv-textop` 同步后，直接从项目解释器导入 Torch、CLIP、einops。
 - GPU 3 实际加载所有 generator 制品，完成文本编码与 `[8,29]` primitive smoke。
 - 完整测试、compileall、静态 import 扫描和 `git diff --check` 通过。

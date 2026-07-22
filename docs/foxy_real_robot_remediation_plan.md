@@ -10,7 +10,7 @@
 
 ## 1. 目标
 
-将项目的真实机器人运行基线从 ROS 2 Humble/Python 3.10 调整为机器人实际使用的 ROS 2 Foxy/Python 3.8，并在该环境中修复、验证以下关键链路：
+将项目的真实机器人运行基线固定为 ROS 2 Foxy/Python 3.8，并在该环境中修复、验证以下关键链路：
 
 1. CycloneDDS 与 Unitree 原生话题通信；
 2. `g1_interface` 对 Unitree Sport API 的请求与响应匹配；
@@ -23,12 +23,12 @@
 
 ### 2.1 ROS 和 Python 基线不一致
 
-`wip-changes` 已将 Makefile 的 ROS 路径改为 `/opt/ros/foxy`，并尝试使用 Python 3.8，但仓库其余配置仍包含以下 Humble/Python 3.10 约束：
+`wip-changes` 已将 Makefile 的 ROS 路径改为 `/opt/ros/foxy`，并尝试使用 Python 3.8，但仓库其余配置仍包含以下 旧环境/Python 3.10 约束：
 
 - `pyproject.toml` 与 `uv.lock` 要求 Python 3.10；
 - Ruff、Pyright 以 Python 3.10 为目标；
-- `flake.nix` 和 `nix/pkgs/unitree-ros2.nix` 指向 Humble；
-- README、设计文档和实机清单仍包含 Humble 命令；
+- `flake.nix` 和 `nix/pkgs/unitree-ros2.nix` 仍指向旧 ROS 环境；
+- README、设计文档和实机清单仍包含旧环境命令；
 - 部分依赖版本尚未确认是否支持 Python 3.8。
 
 因此不能只修改 `source /opt/ros/...`，必须在 Foxy 环境中重新验证依赖、构建和运行入口。
@@ -117,19 +117,18 @@ ros2 topic info /api/sport/response -v
 1. 统一 Makefile、Python 项目约束、锁文件和静态检查目标；
 2. 检查依赖是否提供 Python 3.8 可用版本，必要时调整版本；
 3. 修复 Python 3.8 不兼容的运行时类型表达式和标准库 API；
-4. 修复 Foxy 与 Humble 之间的 `rclpy` API 差异；
+4. 修复 Foxy 与旧 ROS 版本 之间的 `rclpy` API 差异；
 5. 更新构建、启动和测试文档；
 6. 明确 TextOp 是否共用 ROS Python 3.8 环境，或采用独立部署方式。
 
 完成标准：
 
 ```bash
-make bootstrap
-make build
-make test
+make foxy-build
+make foxy-test-core
 ```
 
-以上命令在 Foxy 环境可重复执行，且不隐式加载 Humble。
+以上命令在 Foxy 环境可重复执行，且不隐式加载其他 ROS 版本。
 
 ### 阶段 C：修复 `g1_interface` Sport API 协议
 

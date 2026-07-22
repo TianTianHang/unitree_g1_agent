@@ -85,9 +85,8 @@ low_level_guard_node
 
 ### 隔离的项目环境
 
-常规 ROS 开发、测试和静态检查使用 `.venv-ros`。TextOp 推理使用独立的
-`.venv-textop`；两个环境都固定为 `/usr/bin/python3` 对应的 Python 3.10，并启用 ROS Humble
-所需的 system site-packages。TextOp 依赖作为独立 uv dependency group 管理：
+核心 ROS 开发、测试和静态检查使用 Foxy 系统 Python 3.8 与 `install-foxy`。TextOp 推理使用独立的
+`.venv-textop`；TextOp 环境固定为 Python 3.10，与 Foxy 的 Python 3.8 ROS 核心环境分离，并按部署需要提供系统运行时依赖。
 
 ```text
 dependency-groups.textop

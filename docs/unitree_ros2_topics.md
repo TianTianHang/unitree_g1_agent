@@ -497,7 +497,7 @@ source setup_local.sh
 ```bash
 cd cyclonedds_ws
 colcon build --symlink-install
-source install/setup.bash
+source install-foxy/setup.bash
 ```
 
 ### 启动机器人

@@ -98,7 +98,7 @@ Key G1 API IDs:
 
 ## Development Environment
 
-The repository uses Nix for reproducible setup, but ROS2 Humble is still expected at the system level.
+The repository uses Nix for reproducible setup, but ROS 2 Foxy is the current real-robot baseline.
 
 ```bash
 nix develop
@@ -109,7 +109,7 @@ nix build .#default
 
 ROS2/CycloneDDS prerequisites:
 
-- Source `/opt/ros/humble/setup.bash` when not inside the Nix development shell.
+- Source `/opt/ros/foxy/setup.bash` when not inside the Nix development shell.
 - Use `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`.
 - Set `CYCLONEDDS_URI` to the robot network interface for hardware, or `lo` for local simulation.
 - Typical Unitree robot network: `192.168.123.0/24`.
@@ -137,9 +137,9 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTHONPATH=src/g1_sim .venv/bin/python -m pytes
 Build ROS2 packages when a ROS2 environment is available:
 
 ```bash
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install
-source install/setup.bash
+source /opt/ros/foxy/setup.bash
+make foxy-build
+source install-foxy/setup.bash
 ```
 
 ## Important Files
@@ -164,5 +164,5 @@ source install/setup.bash
 - Unitree Developer Support: https://support.unitree.com/home/zh/developer
 - unitree_sdk2 GitHub: https://github.com/unitreerobotics/unitree_sdk2
 - unitree_ros2 GitHub: https://github.com/unitreerobotics/unitree_ros2
-- ROS2 Documentation: https://docs.ros.org/en/humble/
+- ROS2 Documentation: https://docs.ros.org/en/foxy/
 - CycloneDDS Documentation: https://docs.cyclonedds.io/en/latest/

@@ -34,8 +34,9 @@ guard 负责：
 ## 启动
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source /opt/ros/foxy/setup.bash
+source .unitree/unitree_ros2/cyclonedds_ws/install-foxy/setup.bash
+source install-foxy/setup.bash
 ros2 launch low_level_guard low_level_guard.launch.py
 ```
 
