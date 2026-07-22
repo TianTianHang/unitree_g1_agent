@@ -149,5 +149,5 @@ def validate_pi_config(pi_config: object) -> None:
         if key == "restart_max_attempts":
             if not isinstance(value, int) or value <= 0:
                 raise ValueError("agent.pi.timeouts.restart_max_attempts must be positive integer")
-        elif isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        elif isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
             raise ValueError(f"agent.pi.timeouts.{key} must be positive")

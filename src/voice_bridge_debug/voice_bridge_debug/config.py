@@ -120,7 +120,7 @@ class DebugPanelConfig:
         confidence = self.defaults.get("asr_confidence")
         if (
             isinstance(confidence, bool)
-            or not isinstance(confidence, int | float)
+            or not isinstance(confidence, (int, float))
             or not 0.0 <= float(confidence) <= 1.0
         ):
             raise ValueError("defaults.asr_confidence must be between 0 and 1")

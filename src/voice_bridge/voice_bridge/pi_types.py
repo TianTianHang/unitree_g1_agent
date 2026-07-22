@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Dict, Protocol
 
 
 class OptionalCloseableAgent(Protocol):
@@ -30,4 +30,4 @@ DEFAULT_PI_TIMEOUTS: dict[str, float | int] = {
     "restart_max_attempts": 5,
 }
 
-PiEvent = dict[str, Any]
+PiEvent = Dict[str, Any]

@@ -8,7 +8,7 @@ def test_direct_inference_sources_do_not_import_robotmdar():
     files = [ROOT / "robotmdar_runtime.py", *sorted((ROOT / "textop_model").rglob("*.py"))]
     for path in files:
         tree = ast.parse(path.read_text(), filename=str(path))
-        imports = [node for node in ast.walk(tree) if isinstance(node, ast.Import | ast.ImportFrom)]
+        imports = [node for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))]
         names = [alias.name for node in imports for alias in node.names]
         assert all(not name.startswith("robotmdar") for name in names), path
 

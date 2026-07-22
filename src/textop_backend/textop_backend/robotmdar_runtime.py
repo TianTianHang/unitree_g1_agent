@@ -110,7 +110,7 @@ class RobotMDARRuntime:
     def _load_stats(path: str | Path):
         import torch
         obj = torch.load(Path(path), map_location="cpu")
-        if isinstance(obj, tuple | list) and len(obj) == 2:
+        if isinstance(obj, (tuple, list)) and len(obj) == 2:
             return obj[0].float(), obj[1].float()
         if isinstance(obj, dict) and "mean" in obj and "std" in obj:
             return torch.as_tensor(obj["mean"]).float(), torch.as_tensor(obj["std"]).float()

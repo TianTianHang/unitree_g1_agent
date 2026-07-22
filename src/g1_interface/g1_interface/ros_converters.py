@@ -117,7 +117,7 @@ def native_audio_event(raw_text: str, stamp_sec: float) -> VoiceEvent | None:
         confidence = payload.get("confidence")
         if (
             not isinstance(confidence, bool)
-            and isinstance(confidence, int | float)
+            and isinstance(confidence, (int, float))
             and math.isfinite(float(confidence))
             and 0.0 <= confidence <= 1.0
         ):

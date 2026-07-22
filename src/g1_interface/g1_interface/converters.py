@@ -18,7 +18,7 @@ def _float_list(value: object, length: int, default: list[float]) -> list[float]
 
 
 def _float_value(value: Any, default: float = 0.0) -> float:
-    if isinstance(value, Iterable) and not isinstance(value, str | bytes):
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
         values = list(value)
         if not values:
             return default

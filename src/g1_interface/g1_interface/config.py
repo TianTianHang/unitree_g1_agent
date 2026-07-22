@@ -186,7 +186,7 @@ class G1InterfaceConfig:
         missing_timeouts = []
         for key in required_timeouts:
             value = self.timeouts.get(key)
-            if isinstance(value, bool) or not isinstance(value, int | float):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
                 missing_timeouts.append(key)
         if missing_timeouts:
             raise ValueError(f"missing timeout config: {', '.join(missing_timeouts)}")

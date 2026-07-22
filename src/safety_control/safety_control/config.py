@@ -96,7 +96,7 @@ def _require_bool(mapping: dict[str, Any], key: str) -> None:
 
 def _require_number(mapping: dict[str, Any], key: str, *, positive: bool = False) -> None:
     value = mapping.get(key)
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{key} must be numeric")
     if positive and value <= 0:
         raise ValueError(f"{key} must be positive")

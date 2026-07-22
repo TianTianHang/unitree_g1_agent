@@ -108,7 +108,7 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
 
 def _require_positive_number(mapping: dict[str, Any], key: str) -> None:
     value = mapping.get(key)
-    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
         raise ValueError(f"{key} must be a positive number")
 
 

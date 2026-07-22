@@ -35,7 +35,7 @@ def _decode_value(value: str) -> Any:
 def _diagnostic_level_to_int(value: Any) -> int:
     if isinstance(value, int):
         return value
-    if isinstance(value, bytes | bytearray):
+    if isinstance(value, (bytes, bytearray)):
         if len(value) == 1:
             return value[0]
         return int(value)

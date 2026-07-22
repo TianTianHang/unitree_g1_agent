@@ -5,7 +5,7 @@ import math
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol, TypeGuard
+from typing import Any, Protocol
 
 from voice_bridge.agent import AgentClient, build_agent_client
 from voice_bridge.config import VoiceBridgeConfig
@@ -21,7 +21,7 @@ def _json(data: dict[str, Any]) -> str:
 def diagnostic_level_to_int(level: Any) -> int | None:
     if level is None:
         return None
-    if isinstance(level, bytes | bytearray | memoryview):
+    if isinstance(level, (bytes, bytearray, memoryview)):
         raw = bytes(level)
         return raw[0] if raw else None
     return int(level)
@@ -35,7 +35,7 @@ class CloseableAgent(Protocol):
         ...
 
 
-def _supports_closeable(agent: object) -> TypeGuard[CloseableAgent]:
+def _supports_closeable(agent: object) -> bool:
     return hasattr(agent, "abort") and hasattr(agent, "close")
 
 
@@ -594,7 +594,11 @@ class VoiceBridgeNode:
         self._agent_requests.invalidate()
         if self._closeable_agent is not None:
             self._closeable_agent.close()
-        self._agent_executor.shutdown(wait=False, cancel_futures=True)
+        try:
+            self._agent_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            # Python 3.8 (used by ROS 2 Foxy) has no cancel_futures parameter.
+            self._agent_executor.shutdown(wait=False)
 
 
 def main(args=None):

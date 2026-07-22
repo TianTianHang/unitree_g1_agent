@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 SUPPORTED_BACKENDS = ("official_loco", "textop")
 
 

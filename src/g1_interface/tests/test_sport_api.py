@@ -38,11 +38,12 @@ class FakeResponse:
         self.binary = []
 
 
-def test_build_velocity_request_sets_sequence_api_id_and_json_payload():
+def test_build_velocity_request_sets_monotonic_id_api_id_and_json_payload():
     client = SportApiClient(
         request_cls=FakeRequest,
         api_ids={"set_velocity": 7105},
         response_timeout_sec=0.5,
+        request_id_factory=lambda: 12345678900000000,
     )
 
     request = client.build_request(
@@ -50,7 +51,7 @@ def test_build_velocity_request_sets_sequence_api_id_and_json_payload():
         now_sec=10.0,
     )
 
-    assert request.header.identity.id == 1
+    assert request.header.identity.id == 12345678900000000
     assert request.header.identity.api_id == 7105
     assert json.loads(request.parameter) == {"duration": 1.5, "velocity": [0.2, 0.0, 0.1]}
     assert client.pending_count == 1
@@ -64,7 +65,12 @@ def test_build_request_rejects_unknown_action():
 
 
 def test_record_response_clears_pending_request():
-    client = SportApiClient(request_cls=FakeRequest, api_ids={"set_velocity": 7105}, response_timeout_sec=0.5)
+    client = SportApiClient(
+        request_cls=FakeRequest,
+        api_ids={"set_velocity": 7105},
+        response_timeout_sec=0.5,
+        request_id_factory=lambda: 123456789,
+    )
     request = client.build_request(
         SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0], "duration": 0.1}),
         now_sec=10.0,
@@ -75,7 +81,7 @@ def test_record_response_clears_pending_request():
 
     assert result == {
         "matched": True,
-        "sequence_id": 1,
+        "sequence_id": 123456789,
         "api_id": 7105,
         "action": "set_velocity",
         "code": 0,
@@ -83,6 +89,47 @@ def test_record_response_clears_pending_request():
         "payload": {},
     }
     assert client.pending_count == 0
+
+
+def test_request_ids_are_monotonic_when_clock_values_repeat_or_go_backwards():
+    values = iter([100, 100, 99])
+    client = SportApiClient(
+        request_cls=FakeRequest,
+        api_ids={"set_velocity": 7105},
+        response_timeout_sec=0.5,
+        request_id_factory=lambda: next(values),
+    )
+
+    requests = [
+        client.build_request(
+            SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0]}),
+            now_sec=10.0,
+        )
+        for _ in range(3)
+    ]
+
+    assert [request.header.identity.id for request in requests] == [100, 101, 102]
+
+
+def test_response_with_matching_id_but_wrong_api_id_does_not_clear_pending_request():
+    client = SportApiClient(
+        request_cls=FakeRequest,
+        api_ids={"set_velocity": 7105},
+        response_timeout_sec=0.5,
+        request_id_factory=lambda: 123,
+    )
+    request = client.build_request(
+        SportCommand(action="set_velocity", params={"velocity": [0.0, 0.0, 0.0]}),
+        now_sec=10.0,
+    )
+    response = FakeResponse(request)
+    response.header.identity.api_id = 7002
+
+    result = client.record_response(response, now_sec=10.1)
+
+    assert result["matched"] is False
+    assert result["expected_api_id"] == 7105
+    assert client.pending_count == 1
 
 
 def test_record_response_decodes_payload():

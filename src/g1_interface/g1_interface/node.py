@@ -658,7 +658,7 @@ def main(args=None):
 
     from g1_interface.config import G1InterfaceConfig
 
-    rclpy.init(args=args, signal_handler_options=rclpy.SignalHandlerOptions.NO)
+    rclpy.init(args=args)
     node = rclpy.create_node("g1_interface_node")
     node.declare_parameter("config_path", "")
     config_path = node.get_parameter("config_path").get_parameter_value().string_value

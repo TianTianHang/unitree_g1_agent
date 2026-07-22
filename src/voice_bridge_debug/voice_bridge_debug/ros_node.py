@@ -163,7 +163,7 @@ class DebugBridgeNode:
             confidence = request.get("confidence")
             if (
                 not isinstance(confidence, bool)
-                and isinstance(confidence, int | float)
+                and isinstance(confidence, (int, float))
                 and math.isfinite(float(confidence))
                 and 0.0 <= float(confidence) <= 1.0
             ):

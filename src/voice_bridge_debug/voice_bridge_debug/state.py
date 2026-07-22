@@ -50,7 +50,7 @@ def parse_json_topic(raw: str) -> dict[str, Any]:
 def _diagnostic_level_to_int(level: Any) -> int | None:
     if level is None:
         return None
-    if isinstance(level, bytes | bytearray | memoryview):
+    if isinstance(level, (bytes, bytearray, memoryview)):
         raw = bytes(level)
         return raw[0] if raw else None
     return int(level)
